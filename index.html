@@ -1008,7 +1008,21 @@ async function sendChat(){
   const t=tab();
   const sys=`당신은 창작 세계관의 조언자입니다. 아래 세계관 정보를 바탕으로 질문에 자세히 답하세요.\n\n세계관 프롬프트: ${t.worldPrompt||'(없음)'}\n\n노드 목록:\n${nodeCtx()}\n\n관계 목록:\n${edgeCtx()}`;
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,system:sys,messages:chatHistory.map(m=>({role:m.role,content:m.content}))})});
+    const r=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:'claude-sonnet-4-5-20251001',
+        max_tokens:800,
+        system:sys,
+        messages:chatHistory.map(m=>({role:m.role,content:m.content}))
+      })
+    });
     const data=await r.json();
     const ans=data.content?data.content.map(c=>c.text||'').join(''):'오류가 발생했습니다.';
     chatHistory.push({role:'assistant',content:ans});
@@ -1039,7 +1053,21 @@ async function generateEvent(){
   const sys=`당신은 창작 세계관의 스토리텔러입니다. 반드시 JSON으로만 응답하세요.\n형식: {"time":"시간 표현(예: 1년 전, 사건 초반)","body":"사건 내용","order":정수(낮을수록 과거)}`;
   const usr=`세계관: ${t.worldPrompt||'없음'}\n노드:\n${nodeCtx()}\n관계:\n${edgeCtx()}\n기존사건:\n${eventCtx()}\n\n위 정보를 바탕으로 일어날만한 새로운 사건 1개를 생성하고, 기존 사건들 사이의 시간 순서에서 어디에 위치하는지 order로 표현하세요.`;
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:400,system:sys,messages:[{role:'user',content:usr}]})});
+    const r=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:'claude-sonnet-4-5-20251001',
+        max_tokens:400,
+        system:sys,
+        messages:[{role:'user',content:usr}]
+      })
+    });
     const data=await r.json();
     const text=data.content.map(c=>c.text||'').join('');
     const clean=text.replace(/```json|```/g,'').trim();
@@ -1181,16 +1209,44 @@ async function fetchEdgeSug(edgeId){
 
 async function callAI(sys,usr,onSuccess){
   const apiKey=await getApiKey();
+  if(!apiKey){showSugErr('API 키가 설정되지 않았습니다. ⚙ 설정에서 입력해주세요.');return;}
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,system:sys,messages:[{role:'user',content:usr}]})});
-    if(!r.ok){const err=await r.json();showSugErr('API 오류: '+(err.error?.message||r.status));return;}
+    const r=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:'claude-sonnet-4-5-20251001',
+        max_tokens:800,
+        system:sys,
+        messages:[{role:'user',content:usr}]
+      })
+    });
     const data=await r.json();
-    const text=data.content.map(c=>c.text||'').join('');
-    // robust JSON extraction
-    const jsonMatch=text.match(/\[[\s\S]*\]/);
-    if(!jsonMatch){showSugErr('JSON 파싱 오류: 응답에서 배열을 찾을 수 없습니다.');return;}
-    onSuccess(JSON.parse(jsonMatch[0]));
-  }catch(e){showSugErr('오류: '+e.message);}
+    if(!r.ok){
+      const msg=data?.error?.message||`HTTP ${r.status}`;
+      showSugErr('API 오류: '+msg);
+      console.error('API error detail:',data);
+      return;
+    }
+    const text=data.content.map(b=>b.text||'').join('');
+    const jsonMatch=text.match(/\[[\s\S]*?\]/);
+    if(!jsonMatch){
+      showSugErr('응답 파싱 오류 — 다시 시도해주세요.');
+      console.error('Raw response:',text);
+      return;
+    }
+    try{
+      onSuccess(JSON.parse(jsonMatch[0]));
+    }catch(pe){
+      showSugErr('JSON 파싱 오류: '+pe.message);
+      console.error('JSON parse error:',jsonMatch[0]);
+    }
+  }catch(e){showSugErr('네트워크 오류: '+e.message);console.error(e);}
 }
 
 function renderNodeCards(sug,mode,nodeId){
@@ -1249,7 +1305,21 @@ async function fetchProtagonistStory(nodeId){
   const sys='창작 세계관의 스토리텔러. 주인공의 상호작용 장면을 생생하게 1-2문단으로 묘사하세요. 장소면 방문, 인물이면 대화, 사물이면 획득/관찰, 사건이면 체험. 연결된 인물이 있으면 함께 등장시키세요.';
   const usr=`세계관: ${(t.worldPrompt||'없음').slice(0,120)}\n주인공: ${hero?hero.name+' - '+hero.desc:'(이름이 주인공인 노드를 찾지 못함)'}\n대상 노드: [${TL[n.type]}] ${n.name} - ${n.desc||''}\n연결된 노드: ${connected.map(c=>`[${TL[c.type]}]${c.name}`).join(', ')||'없음'}\n전체 관계: ${edgeCtx().slice(0,400)}\n\n주인공이 위 대상과 상호작용하는 장면을 묘사하세요.`;
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:500,system:sys,messages:[{role:'user',content:usr}]})});
+    const r=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:'claude-sonnet-4-5-20251001',
+        max_tokens:500,
+        system:sys,
+        messages:[{role:'user',content:usr}]
+      })
+    });
     const data=await r.json();
     protagonistStory=data.content?data.content.map(c=>c.text||'').join(''):'오류가 발생했습니다.';
     storyEl.textContent=protagonistStory;
