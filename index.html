@@ -624,22 +624,42 @@ async function sha256(str){
 function openLoginModal(){document.getElementById('login-modal').classList.remove('hidden');setTimeout(()=>document.getElementById('login-code-input').focus(),50);}
 function closeLoginModal(){document.getElementById('login-modal').classList.add('hidden');document.getElementById('login-err').style.display='none';document.getElementById('login-code-input').value='';}
 async function doLogin(){
-  if(!fbEnabled){showToast('Firebase 연결 후 사용 가능합니다');return;}
   const code=document.getElementById('login-code-input').value;
   if(!code){document.getElementById('login-err').style.display='block';return;}
-  const {get,ref}=window.__FB;
-  const snap=await get(ref(fbDb,'auth/masterHash'));
-  const storedHash=snap.val();
-  // 최초 설정: Firebase에 해시가 없으면 입력값으로 등록
-  if(!storedHash){
-    const hash=await sha256(code);
-    const {set,ref:ref2}=window.__FB;
-    await set(ref2(fbDb,'auth/masterHash'),hash);
-    isEditMode=true;updateEditUI();closeLoginModal();showToast('마스터 코드가 등록되었습니다 ✓');
+  const inputHash=await sha256(code);
+
+  // Firebase 연결된 경우: Firebase 해시 우선
+  if(fbEnabled&&fbDb){
+    const {get,ref,set}=window.__FB;
+    try{
+      const snap=await get(ref(fbDb,'auth/masterHash'));
+      const storedHash=snap.val();
+      if(!storedHash){
+        // 최초 등록
+        await set(ref(fbDb,'auth/masterHash'),inputHash);
+        localStorage.setItem('wm_mh',inputHash);
+        isEditMode=true;updateEditUI();closeLoginModal();showToast('마스터 코드가 등록되었습니다 ✓');
+        return;
+      }
+      if(inputHash===storedHash){
+        localStorage.setItem('wm_mh',inputHash);
+        isEditMode=true;updateEditUI();closeLoginModal();showToast('편집 모드가 활성화되었습니다 ✓');
+      }else{
+        document.getElementById('login-err').style.display='block';
+      }
+      return;
+    }catch(e){console.warn('Firebase auth 읽기 실패, 로컬 폴백',e);}
+  }
+
+  // Firebase 미연결: localStorage 해시로 폴백
+  const localHash=localStorage.getItem('wm_mh');
+  if(!localHash){
+    localStorage.setItem('wm_mh',inputHash);
+    isEditMode=true;updateEditUI();closeLoginModal();
+    showToast('마스터 코드 등록됨 (로컬) — Firebase 연결 후 재등록 권장');
     return;
   }
-  const inputHash=await sha256(code);
-  if(inputHash===storedHash){
+  if(inputHash===localHash){
     isEditMode=true;updateEditUI();closeLoginModal();showToast('편집 모드가 활성화되었습니다 ✓');
   }else{
     document.getElementById('login-err').style.display='block';
@@ -1054,26 +1074,50 @@ async function saveSettings(){
   const curCode=document.getElementById('master-code-cur').value;
   const newCode=document.getElementById('master-code-new').value.trim();
   if(newCode){
-    if(!fbEnabled){showToast('Firebase 연결 후 마스터 코드 변경 가능합니다');return;}
-    const {get,set,ref}=window.__FB;
-    const snap=await get(ref(fbDb,'auth/masterHash'));
-    const storedHash=snap.val();
-    // 최초 등록 (기존 해시 없음) 이거나, 현재 코드가 맞으면 변경 허용
-    if(!storedHash){
-      const newHash=await sha256(newCode);
-      await set(ref(fbDb,'auth/masterHash'),newHash);
-      document.getElementById('mc-change-err').style.display='none';
-      showToast('마스터 코드가 설정되었습니다 ✓');
-    }else{
-      const curHash=await sha256(curCode);
-      if(curHash!==storedHash){
-        document.getElementById('mc-change-err').style.display='block';
-        return; // 저장 중단
+    const newHash=await sha256(newCode);
+
+    // ── Firebase 연결된 경우 ──
+    if(fbEnabled&&fbDb){
+      const {get,set,ref}=window.__FB;
+      try{
+        const snap=await get(ref(fbDb,'auth/masterHash'));
+        const storedHash=snap.val();
+        if(!storedHash){
+          // 최초 등록
+          await set(ref(fbDb,'auth/masterHash'),newHash);
+          localStorage.setItem('wm_mh',newHash);
+          document.getElementById('mc-change-err').style.display='none';
+          showToast('마스터 코드가 설정되었습니다 ✓');
+        }else{
+          const curHash=await sha256(curCode);
+          if(curHash!==storedHash){
+            document.getElementById('mc-change-err').style.display='block';
+            return;
+          }
+          await set(ref(fbDb,'auth/masterHash'),newHash);
+          localStorage.setItem('wm_mh',newHash);
+          document.getElementById('mc-change-err').style.display='none';
+          showToast('마스터 코드가 변경되었습니다 ✓');
+        }
+      }catch(e){
+        // Firebase 실패 시 로컬 폴백
+        console.warn('Firebase 쓰기 실패, 로컬 저장',e);
+        localStorage.setItem('wm_mh',newHash);
+        showToast('마스터 코드 저장됨 (로컬) — Firebase 연결 상태를 확인해주세요');
       }
-      const newHash=await sha256(newCode);
-      await set(ref(fbDb,'auth/masterHash'),newHash);
+    }else{
+      // ── Firebase 미연결: localStorage만 사용 ──
+      const localHash=localStorage.getItem('wm_mh');
+      if(localHash){
+        const curHash=await sha256(curCode);
+        if(curHash!==localHash){
+          document.getElementById('mc-change-err').style.display='block';
+          return;
+        }
+      }
+      localStorage.setItem('wm_mh',newHash);
       document.getElementById('mc-change-err').style.display='none';
-      showToast('마스터 코드가 변경되었습니다 ✓');
+      showToast('마스터 코드 저장됨 (로컬) — Firebase 연결을 권장합니다');
     }
   }
 
