@@ -440,7 +440,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
     <div id="protagonist-story"><div class="ld"><span></span><span></span><span></span></div></div>
     <div id="protagonist-img-wrap"><img id="protagonist-img" src=""/></div>
     <div class="prog-btns">
-      <button class="btn btn-ghost" onclick="protagonistRegen()" style="font-size:12px">↻ 다시 추천</button>
+      <button class="btn btn-ghost" onclick="protagonistRegen()" style="font-size:12px" id="btn-regen">↻ 다시 추천</button>
       <button class="btn btn-primary" onclick="protagonistGenImg()" style="font-size:12px" id="btn-gen-img">🎨 이미지 생성</button>
       <button class="btn btn-ok" onclick="protagonistSaveEvent()" style="font-size:12px">📜 사건 저장</button>
       <button class="btn btn-ghost" onclick="closeProtagonist()" style="font-size:12px">닫기</button>
@@ -463,6 +463,46 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
 const TL={world:'세계',group:'집단',space:'공간',char:'인물',item:'사물',trait:'성격',custom:'기타'};
 const TI={world:'🌍',group:'👥',space:'🗺',char:'👤',item:'⚔️',trait:'💎',custom:'📌'};
 const TC={world:'#9b59d6',group:'#4a9edd',space:'#3ecfb8',char:'#6bbd4a',item:'#e8b84b',trait:'#d4914a',custom:'#5a6090'};
+const AI_MODEL='claude-sonnet-4-20250514';
+const API_URL='https://api.anthropic.com/v1/messages';
+const API_VERSION='2023-06-01';
+
+// ── sanitizeTab: 탭의 필수 배열 보장 ──
+function sanitizeTab(t){
+  if(!t.nodes)t.nodes=[];
+  if(!t.edges)t.edges=[];
+  if(!t.events)t.events=[];
+  if(!t.refImages)t.refImages=[];
+  return t;
+}
+
+// ── 공통 API 호출 함수 ──
+async function callAnthropicAPI({system,messages,maxTokens=800}){
+  const apiKey=await getApiKey();
+  if(!apiKey)throw new Error('API 키가 설정되지 않았습니다. ⚙ 설정에서 입력해주세요.');
+  const r=await fetch(API_URL,{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'x-api-key':apiKey,
+      'anthropic-version':API_VERSION,
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body:JSON.stringify({
+      model:AI_MODEL,
+      max_tokens:maxTokens,
+      system,
+      messages
+    })
+  });
+  const data=await r.json();
+  if(!r.ok){
+    const msg=data?.error?.message||`HTTP ${r.status}`;
+    console.error('API error detail (status '+r.status+'):', JSON.stringify(data));
+    throw new Error('API 오류: '+msg);
+  }
+  return data.content?data.content.map(c=>c.text||'').join(''):'';
+}
 
 // ══════════════════════════════════════════════════
 // APP STATE
@@ -552,7 +592,15 @@ function renderTabBar(){
   tabs.forEach(t=>{
     const el=document.createElement('div');
     el.className='tab-item'+(t.id===activeTabId?' active':'');
-    el.innerHTML=`<span style="overflow:hidden;text-overflow:ellipsis;flex:1">${esc(t.title)}</span><span class="tab-close" onclick="closeTab('${t.id}',event)">✕</span>`;
+    const titleSpan=document.createElement('span');
+    titleSpan.style.cssText='overflow:hidden;text-overflow:ellipsis;flex:1';
+    titleSpan.textContent=t.title;
+    const closeSpan=document.createElement('span');
+    closeSpan.className='tab-close';
+    closeSpan.textContent='✕';
+    closeSpan.addEventListener('click',ev=>closeTab(t.id,ev));
+    el.appendChild(titleSpan);
+    el.appendChild(closeSpan);
     el.onclick=()=>switchTab(t.id);
     c.appendChild(el);
   });
@@ -670,13 +718,7 @@ function setFbStatus(s){
 function mergeRemote(data){
   if(data.tabs){
     tabs=data.tabs;
-    // 각 탭의 필수 배열 보장
-    tabs.forEach(t=>{
-      if(!t.nodes)t.nodes=[];
-      if(!t.edges)t.edges=[];
-      if(!t.events)t.events=[];
-      if(!t.refImages)t.refImages=[];
-    });
+    tabs.forEach(sanitizeTab);
     renderTabBar();
   }
   if(data.tabs&&!tabs.find(t=>t.id===activeTabId)){
@@ -699,34 +741,6 @@ function saveToFirebase(){
   });
 }
 
-function mergeRemote(data){
-  if(data.tabs){
-    tabs=data.tabs;
-    // 각 탭의 필수 배열 보장
-    tabs.forEach(t=>{
-      if(!t.nodes)t.nodes=[];
-      if(!t.edges)t.edges=[];
-      if(!t.events)t.events=[];
-      if(!t.refImages)t.refImages=[];
-    });
-    renderTabBar();
-  }
-  if(data.tabs&&!tabs.find(t=>t.id===activeTabId)){
-    activeTabId=tabs[0]?.id;
-    if(activeTabId)document.getElementById('project-title-input').value=tab().title;
-  }
-  renderAll();
-}
-
-function saveToFirebase(){
-  if(!fbEnabled||!fbRef)return;
-  remoteLock=true;
-  fbRef.set({tabs}).then(()=>{
-    setTimeout(()=>remoteLock=false,500);
-    setFbStatus('ok');
-  }).catch(e=>{remoteLock=false;setFbStatus('error');});
-}
-
 // ══════════════════════════════════════════════════
 // PERSISTENCE (localStorage fallback)
 // ══════════════════════════════════════════════════
@@ -739,13 +753,7 @@ function loadLocal(){
     const t=localStorage.getItem('wm_tabs');
     if(t){
       tabs=JSON.parse(t);
-      // 각 탭의 필수 배열 보장
-      tabs.forEach(t=>{
-        if(!t.nodes)t.nodes=[];
-        if(!t.edges)t.edges=[];
-        if(!t.events)t.events=[];
-        if(!t.refImages)t.refImages=[];
-      });
+      tabs.forEach(sanitizeTab);
     }
   }catch(e){}
 }
@@ -1145,7 +1153,6 @@ function renderWorldPanel(body){
       <div class="ref-img-row" id="ref-img-row"></div>
     </div>`;
   renderRefImages();
-  document.getElementById('world-prompt-ta').addEventListener('input',()=>{});
 }
 function saveWorldPrompt(){
   const t=tab();t.worldPrompt=document.getElementById('world-prompt-ta').value;persist();showToast('세계관 프롬프트 저장됨 ✓');}
@@ -1187,28 +1194,10 @@ async function sendChat(){
   inp.value='';
   chatHistory.push({role:'user',content:q});appendChatMsg('user',q);
   appendChatMsg('ai','…');
-  const apiKey=await getApiKey();
-  if(!apiKey){const msgs=document.getElementById('chat-msgs');msgs.lastChild.textContent='API 키가 설정되지 않았습니다.';return;}
   const t=tab();
   const sys=`당신은 창작 세계관의 조언자입니다. 아래 세계관 정보를 바탕으로 질문에 자세히 답하세요.\n\n세계관 프롬프트: ${t.worldPrompt||'(없음)'}\n\n노드 목록:\n${nodeCtx()}\n\n관계 목록:\n${edgeCtx()}`;
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'x-api-key':apiKey,
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true'
-      },
-      body:JSON.stringify({
-        model:'claude-opus-4-6',
-        max_tokens:800,
-        system:sys,
-        messages:chatHistory.map(m=>({role:m.role,content:m.content}))
-      })
-    });
-    const data=await r.json();
-    const ans=data.content?data.content.map(c=>c.text||'').join(''):'오류가 발생했습니다.';
+    const ans=await callAnthropicAPI({system:sys,messages:chatHistory.map(m=>({role:m.role,content:m.content}))});
     chatHistory.push({role:'assistant',content:ans});
     const msgs=document.getElementById('chat-msgs');if(msgs&&msgs.lastChild)msgs.lastChild.textContent=ans;msgs.scrollTop=msgs.scrollHeight;
   }catch(e){const msgs=document.getElementById('chat-msgs');if(msgs&&msgs.lastChild)msgs.lastChild.textContent='오류: '+e.message;}
@@ -1226,34 +1215,20 @@ function refreshEventsList(){
   if(!evs.length){list.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">아직 사건이 없습니다. AI로 생성해보세요.</div>';return;}
   evs.forEach(ev=>{
     const card=document.createElement('div');card.className='event-card';
-    card.innerHTML=`<div class="ev-time">${esc(ev.time||'시간 미정')}</div><div class="ev-body">${esc(ev.body)}</div><button class="ev-del" onclick="deleteEvent('${ev.id}')">✕</button>`;
+    card.innerHTML=`<div class="ev-time">${esc(ev.time||'시간 미정')}</div><div class="ev-body">${esc(ev.body)}</div>`;
+    const delBtn=document.createElement('button');delBtn.className='ev-del';delBtn.textContent='✕';
+    delBtn.addEventListener('click',()=>deleteEvent(ev.id));
+    card.appendChild(delBtn);
     list.appendChild(card);
   });
 }
 async function generateEvent(){
-  const apiKey=await getApiKey();if(!apiKey){showToast('API 키가 설정되지 않았습니다');return;}
   const genBtn=document.getElementById('events-gen-btn');genBtn.textContent='생성 중…';genBtn.disabled=true;
   const t=tab();
   const sys=`당신은 창작 세계관의 스토리텔러입니다. 반드시 JSON으로만 응답하세요.\n형식: {"time":"시간 표현(예: 1년 전, 사건 초반)","body":"사건 내용","order":정수(낮을수록 과거)}`;
   const usr=`세계관: ${t.worldPrompt||'없음'}\n노드:\n${nodeCtx()}\n관계:\n${edgeCtx()}\n기존사건:\n${eventCtx()}\n\n위 정보를 바탕으로 일어날만한 새로운 사건 1개를 생성하고, 기존 사건들 사이의 시간 순서에서 어디에 위치하는지 order로 표현하세요.`;
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'x-api-key':apiKey,
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true'
-      },
-      body:JSON.stringify({
-        model:'claude-opus-4-6',
-        max_tokens:400,
-        system:sys,
-        messages:[{role:'user',content:usr}]
-      })
-    });
-    const data=await r.json();
-    const text=data.content.map(c=>c.text||'').join('');
+    const text=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}],maxTokens:400});
     const clean=text.replace(/```json|```/g,'').trim();
     const ev=JSON.parse(clean);
     ev.id=gid();t.events.push(ev);persist();refreshEventsList();showToast('사건이 생성되었습니다 ✓');
@@ -1294,9 +1269,9 @@ function saveGoogleKey(){
 }
 async function saveFirebaseCfg(){
   const fbStr=document.getElementById('firebase-cfg-input').value.trim();
-  if(!fbStr){showToast('Firebase JSON을 입력하세요');return;}
+  if(!fbStr){showToast('Firebase 설정을 입력하세요');return;}
   let parsed;
-  try{parsed=JSON.parse(fbStr);}catch(e){showToast('JSON 형식이 올바르지 않습니다');return;}
+  try{parsed=parseFirebaseCfg(fbStr);}catch(e){showToast('설정 형식이 올바르지 않습니다: '+e.message);return;}
   if(!parsed.databaseURL){showToast('databaseURL 항목이 없습니다');return;}
   localStorage.setItem('wm_fbcfg',fbStr);
   document.getElementById('fb-save-msg').textContent='연결 중…';
@@ -1316,7 +1291,7 @@ async function saveMasterCode(){
         const curHash=await sha256(curCode);
         if(curHash!==storedHash){document.getElementById('mc-change-err').style.display='block';return;}
       }
-      await set(ref(fbDb,'auth/masterHash'),newHash);
+      await fbDb.ref('auth/masterHash').set(newHash);
       localStorage.setItem('wm_mh',newHash);
       document.getElementById('mc-change-err').style.display='none';
       document.getElementById('master-code-cur').value='';
@@ -1335,16 +1310,6 @@ async function saveMasterCode(){
     document.getElementById('master-code-new').value='';
     showToast('마스터 코드가 저장되었습니다 ✓');
   }
-}
-
-// 기존 saveSettings — 마스터 코드 변경 처리 부분만 남김 (하위 호환)
-async function saveSettings(){
-  // 개별 저장 버튼으로 대체됨 — 더 이상 여기서 저장하지 않음
-  // Firebase 설정만 처리 (설정창 닫기 전 마지막 체크)
-  const fbStr=document.getElementById('firebase-cfg-input').value.trim();
-  if(fbStr&&!fbEnabled){localStorage.setItem('wm_fbcfg',fbStr);initFirebase();}
-
-  closeSettingsModal();
 }
 
 // ══════════════════════════════════════════════════
@@ -1402,33 +1367,8 @@ async function fetchEdgeSug(edgeId){
 }
 
 async function callAI(sys,usr,onSuccess){
-  const apiKey=await getApiKey();
-  if(!apiKey){showSugErr('API 키가 설정되지 않았습니다. ⚙ 설정에서 입력해주세요.');return;}
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'x-api-key':apiKey,
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true'
-      },
-      body:JSON.stringify({
-        model:'claude-opus-4-6',
-        max_tokens:800,
-        system:sys,
-        messages:[{role:'user',content:usr}]
-      })
-    });
-    const data=await r.json();
-    if(!r.ok){
-      const msg=data?.error?.message||`HTTP ${r.status}`;
-      showSugErr('API 오류: '+msg);
-      showToast('API 오류: '+msg);
-      console.error('API error detail (status '+r.status+'):', JSON.stringify(data));
-      return;
-    }
-    const text=data.content.map(b=>b.text||'').join('');
+    const text=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}]});
     const jsonMatch=text.match(/\[[\s\S]*?\]/);
     if(!jsonMatch){
       showSugErr('응답 파싱 오류 — 다시 시도해주세요.');
@@ -1441,7 +1381,7 @@ async function callAI(sys,usr,onSuccess){
       showSugErr('JSON 파싱 오류: '+pe.message);
       console.error('JSON parse error:',jsonMatch[0]);
     }
-  }catch(e){showSugErr('네트워크 오류: '+e.message);console.error(e);}
+  }catch(e){showSugErr(e.message);console.error(e);}
 }
 
 function renderNodeCards(sug,mode,nodeId){
@@ -1496,9 +1436,7 @@ function endProtagonistLoading(){
   if(btn){btn.disabled=false;btn.textContent='↻ 다시 추천';}
 }
 async function fetchProtagonistStory(nodeId){
-  const apiKey=await getApiKey();
   const storyEl=document.getElementById('protagonist-story');
-  if(!apiKey){storyEl.textContent='API 키가 설정되지 않았습니다. ⚙ 설정에서 입력해주세요.';endProtagonistLoading();return;}
   const n=byId(nodeId);if(!n){endProtagonistLoading();return;}
   const t=tab();
   const hero=nodes().find(nd=>/주인공/i.test(nd.name));
@@ -1513,24 +1451,7 @@ async function fetchProtagonistStory(nodeId){
 
 주인공 상호작용 장면을 묘사하세요.`;
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'x-api-key':apiKey,
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true'
-      },
-      body:JSON.stringify({
-        model:'claude-opus-4-6',
-        max_tokens:1200,
-        system:sys,
-        messages:[{role:'user',content:usr}]
-      })
-    });
-    const data=await r.json();
-    if(!r.ok){storyEl.textContent='API 오류: '+(data?.error?.message||`HTTP ${r.status}`);endProtagonistLoading();return;}
-    protagonistStory=data.content?data.content.map(x=>x.text||'').join(''):'오류가 발생했습니다.';
+    protagonistStory=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}],maxTokens:1200});
     storyEl.textContent=protagonistStory;
     const sa=document.getElementById('protagonist-scroll-area');if(sa)sa.scrollTop=0;
   }catch(e){storyEl.textContent='오류: '+e.message;}
@@ -1596,64 +1517,14 @@ function startApp(){
   if(localStorage.getItem('wm_fbcfg')){setFbStatus('connecting');}
   else{setFbStatus('disconnected');}
   init();
+  // 자동 저장 — 앱 시작 후에만 실행
+  setInterval(()=>{saveLocal();if(fbEnabled)saveToFirebase();},60000);
 }
 document.addEventListener('DOMContentLoaded',()=>{
   window.__domReady=true;
   if(window.__fbReady)startApp();
 });
-setInterval(()=>{saveLocal();if(fbEnabled)saveToFirebase();},60000);
 
-async function saveSettings(){
-  // API 키 저장
-  const ak=document.getElementById('api-key-input').value.trim();
-  const gk=document.getElementById('google-api-input').value.trim();
-  if(ak)localStorage.setItem('wm_k',ak);
-  if(gk)localStorage.setItem('wm_gk',gk);
-
-  // Firebase 설정 저장 및 연결
-  const fbStr=document.getElementById('firebase-cfg-input').value.trim();
-  if(fbStr){localStorage.setItem('wm_fbcfg',fbStr);initFirebase();}
-
-  // 마스터 코드 변경
-  const curCode=document.getElementById('master-code-cur').value;
-  const newCode=document.getElementById('master-code-new').value.trim();
-  if(newCode){
-    const newHash=await sha256(newCode);
-    if(fbEnabled&&fbDb){
-      try{
-        const snap=await fbDb.ref('auth/masterHash').once('value');
-        const storedHash=snap.val();
-        if(!storedHash){
-          await fbDb.ref('auth/masterHash').set(newHash);
-          localStorage.setItem('wm_mh',newHash);
-          document.getElementById('mc-change-err').style.display='none';
-          showToast('마스터 코드가 설정되었습니다 ✓');
-        }else{
-          const curHash=await sha256(curCode);
-          if(curHash!==storedHash){document.getElementById('mc-change-err').style.display='block';return;}
-          await fbDb.ref('auth/masterHash').set(newHash);
-          localStorage.setItem('wm_mh',newHash);
-          document.getElementById('mc-change-err').style.display='none';
-          showToast('마스터 코드가 변경되었습니다 ✓');
-        }
-      }catch(e){
-        console.warn('Firebase 마스터코드 저장 실패:',e);
-        localStorage.setItem('wm_mh',newHash);
-        showToast('마스터 코드 저장됨 (로컬)');
-      }
-    }else{
-      const localHash=localStorage.getItem('wm_mh');
-      if(localHash){
-        const curHash=await sha256(curCode);
-        if(curHash!==localHash){document.getElementById('mc-change-err').style.display='block';return;}
-      }
-      localStorage.setItem('wm_mh',newHash);
-      showToast('마스터 코드 저장됨 (로컬)');
-    }
-  }
-
-  closeSettingsModal();showToast('설정이 저장되었습니다 ✓');
-}
 </script>
 </body>
 </html>
