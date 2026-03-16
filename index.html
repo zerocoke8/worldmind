@@ -6,13 +6,10 @@
 <title>WorldMind — AI 세계관 마인드맵</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
-<!-- Firebase -->
-<script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getDatabase, ref, onValue, set, get } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
-window.__FB = { initializeApp, getDatabase, ref, onValue, set, get };
-window.dispatchEvent(new Event('fb-ready'));
-</script>
+<!-- Firebase Compat SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
 <style>
 :root{
   --bg:#0a0b0f;--bg2:#10121a;--bg3:#161824;
@@ -257,7 +254,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
   <input id="project-title-input" placeholder="프로젝트 이름…" value="새 세계관"/>
   <div class="tb-sep"></div>
   <button class="tb-btn" onclick="openAddPanel()">＋ 노드</button>
-  <div id="fb-status"><div id="fb-dot"></div><span id="fb-txt">연결 중…</span></div>
+  <div id="fb-status"><div id="fb-dot"></div><span id="fb-txt">오프라인</span></div>
   <div id="tb-spacer"></div>
   <div id="readonly-badge" onclick="openLoginModal()" title="클릭하여 편집 모드 전환">🔒 보기 전용</div>
   <div id="edit-badge" style="display:none">✏️ 편집 중</div>
@@ -351,6 +348,8 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
     </select>
     <label>이름</label><input id="en-name"/>
     <label>세부 설명</label><textarea id="en-desc" style="min-height:90px"></textarea>
+    <label>부모 노드 <span style="color:var(--text3);font-size:10px">(실선으로 연결되는 계층 관계)</span></label>
+    <select id="en-parent"></select>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeEditNodeModal()">취소</button>
       <button class="btn btn-primary" onclick="saveEditNodeModal()">저장</button>
@@ -392,24 +391,43 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
 <div id="settings-modal" class="modal-overlay hidden">
   <div class="modal">
     <h2>⚙ 설정</h2>
+
     <label>Anthropic API Key</label>
-    <input id="api-key-input" type="password" placeholder="sk-ant-…"/>
-    <label>Google Gemini API Key <span style="color:var(--text3);font-size:10px">(이미지 생성용)</span></label>
-    <input id="google-api-input" type="password" placeholder="AIza…"/>
-    <div style="height:1px;background:var(--border);margin:12px 0"></div>
-    <label>Firebase 설정 <span style="color:var(--text3);font-size:10px">(실시간 공유 — JSON 붙여넣기)</span></label>
-    <textarea id="firebase-cfg-input" style="min-height:90px;font-size:11px;font-family:monospace" placeholder='{"apiKey":"…","databaseURL":"https://…-default-rtdb.firebaseio.com","projectId":"…"}'></textarea>
-    <div style="height:1px;background:var(--border);margin:12px 0"></div>
-    <label>마스터 코드 변경 <span style="color:var(--text3);font-size:10px">(Firebase에 해시로 저장 — 원본 코드는 서버에 없음)</span></label>
-    <input id="master-code-cur" type="password" placeholder="현재 마스터 코드 (최초 설정 시 비워두세요)"/>
-    <input id="master-code-new" type="password" placeholder="새 마스터 코드 (변경 않을 시 비워두세요)"/>
-    <div id="mc-change-err" style="font-size:12px;color:var(--danger);margin-bottom:8px;display:none">현재 마스터 코드가 올바르지 않습니다.</div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.6;padding:8px;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
-      🔒 마스터 코드는 SHA-256 해시로 변환되어 Firebase에만 저장됩니다.<br>원본 코드는 어디에도 저장되지 않아 서버를 열어봐도 알 수 없습니다.
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <input id="api-key-input" type="password" placeholder="sk-ant-…" style="flex:1;margin-bottom:0"/>
+      <button class="btn btn-ok" style="font-size:12px;padding:0 12px;white-space:nowrap" onclick="saveApiKey()">저장</button>
     </div>
+
+    <label>Google Gemini API Key <span style="color:var(--text3);font-size:10px">(이미지 생성용)</span></label>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <input id="google-api-input" type="password" placeholder="AIza…" style="flex:1;margin-bottom:0"/>
+      <button class="btn btn-ok" style="font-size:12px;padding:0 12px;white-space:nowrap" onclick="saveGoogleKey()">저장</button>
+    </div>
+
+    <div style="height:1px;background:var(--border);margin:12px 0"></div>
+
+    <label>Firebase 설정 <span style="color:var(--text3);font-size:10px">(실시간 공유 — JSON 붙여넣기)</span></label>
+    <textarea id="firebase-cfg-input" style="min-height:90px;font-size:11px;font-family:monospace;margin-bottom:6px" placeholder='{"apiKey":"…","databaseURL":"https://…-default-rtdb.firebaseio.com","projectId":"…"}'></textarea>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <div id="fb-save-msg" style="font-size:11px;color:var(--text3);flex:1"></div>
+      <button class="btn btn-ok" style="font-size:12px;padding:0 14px" onclick="saveFirebaseCfg()">Firebase 연결</button>
+    </div>
+
+    <div style="height:1px;background:var(--border);margin:12px 0"></div>
+
+    <label>마스터 코드 변경 <span style="color:var(--text3);font-size:10px">(Firebase에 해시로 저장)</span></label>
+    <input id="master-code-cur" type="password" placeholder="현재 마스터 코드 (최초 설정 시 비워두세요)" style="margin-bottom:6px"/>
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <input id="master-code-new" type="password" placeholder="새 마스터 코드" style="flex:1;margin-bottom:0"/>
+      <button class="btn btn-ok" style="font-size:12px;padding:0 12px;white-space:nowrap" onclick="saveMasterCode()">변경</button>
+    </div>
+    <div id="mc-change-err" style="font-size:12px;color:var(--danger);margin-bottom:8px;display:none">현재 마스터 코드가 올바르지 않습니다.</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:4px;line-height:1.6;padding:8px;background:var(--surface);border-radius:6px;border:1px solid var(--border)">
+      🔒 마스터 코드는 SHA-256 해시로 변환되어 Firebase에만 저장됩니다.
+    </div>
+
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeSettingsModal()">취소</button>
-      <button class="btn btn-primary" onclick="saveSettings()">저장</button>
+      <button class="btn btn-ghost" onclick="closeSettingsModal()">닫기</button>
     </div>
   </div>
 </div>
@@ -549,39 +567,113 @@ document.addEventListener('DOMContentLoaded',()=>{
 // ══════════════════════════════════════════════════
 // FIREBASE
 // ══════════════════════════════════════════════════
-async function initFirebase(){
-  const cfgStr=localStorage.getItem('wm_fbcfg');
-  if(!cfgStr)return setFbStatus('disconnected');
-  let cfg;
-  try{cfg=JSON.parse(cfgStr);}catch(e){return setFbStatus('error');}
-  if(!cfg.databaseURL)return setFbStatus('error');
+async // Firebase 설정 파싱 — JSON / JS객체 / const선언 모두 지원
+function parseFirebaseCfg(input){
+  let s=input.trim();
 
-  await new Promise(r=>{
-    if(window.__FB){r();}else{window.addEventListener('fb-ready',r,{once:true});}
-  });
-  const {initializeApp,getDatabase,ref,onValue,set}=window.__FB;
+  // const firebaseConfig = { ... }; 에서 값 부분만 추출
+  const eqIdx=s.indexOf('=');
+  if(eqIdx!==-1){
+    const after=s.slice(eqIdx+1).trim();
+    if(after.startsWith('{'))s=after;
+  }
+
+  // 끝의 ; 제거
+  s=s.replace(/;\s*$/,'');
+
+  // 중괄호 카운팅으로 첫 번째 완전한 { } 블록 추출
+  let depth=0,si=-1,ei=-1;
+  for(let i=0;i<s.length;i++){
+    if(s[i]==='{'){if(depth===0)si=i;depth++;}
+    else if(s[i]==='}'){depth--;if(depth===0){ei=i;break;}}
+  }
+  if(si!==-1&&ei!==-1)s=s.slice(si,ei+1);
+
+  // 1단계: 표준 JSON 시도
+  try{return JSON.parse(s);}catch(e1){}
+
+  // 2단계: 각 줄에서 키에만 따옴표 추가
+  // 키: 줄의 시작 공백 이후 알파벳으로 시작하는 단어, 다음에 콜론
+  const fixed=s.split('\n').map(line=>{
+    return line.replace(/^(\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*:)/, (_,sp,key,col)=>sp+'"'+key+'"'+col);
+  }).join('\n').replace(/,(\s*\})/g,'$1');
+
+  return JSON.parse(fixed);
+}
+
+
+function initFirebase(){
+  const cfgStr=localStorage.getItem('wm_fbcfg');
+  if(!cfgStr){setFbStatus('disconnected');return;}
+
+  // JS 객체 형식 / 중복 JSON / 일반 JSON 모두 허용
+  // Firebase 설정 파싱 — JSON / JS객체 / const선언 모두 허용
+  let fbCfg;
   try{
-    fbApp=initializeApp(cfg,'worldmind');
-    fbDb=getDatabase(fbApp);
-    fbRef=ref(fbDb,'worldmind');
+    fbCfg=parseFirebaseCfg(cfgStr);
+  }catch(e2){
+    setFbStatus('error');
+    showToast('Firebase 설정 오류: '+e2.message);
+    console.error('Firebase config error:',e2,'\nInput was:',cfgStr);
+    return;
+  }
+
+  if(!fbCfg||!fbCfg.databaseURL){
+    setFbStatus('error');
+    showToast('Firebase 설정에 databaseURL이 없습니다');
+    console.error('Missing databaseURL in Firebase config');
+    return;
+  }
+
+  setFbStatus('connecting');
+
+  try{
+    // 기존 앱 모두 삭제 후 재초기화
+    if(firebase.apps&&firebase.apps.length){
+      Promise.all(firebase.apps.map(app=>app.delete())).then(()=>{
+        _doInitFirebase(fbCfg);
+      });
+    }else{
+      _doInitFirebase(fbCfg);
+    }
+  }catch(e){
+    console.error('Firebase init error:',e);
+    setFbStatus('error');
+    showToast('Firebase 연결 실패: '+e.message);
+  }
+}
+
+function _doInitFirebase(fbCfg){
+  try{
+    const app=firebase.initializeApp(fbCfg);
+    fbDb=firebase.database(app);
+    fbRef=fbDb.ref('worldmind');
     fbEnabled=true;
     setFbStatus('ok');
-    // listen for remote changes
-    onValue(fbRef,snap=>{
+
+    fbRef.on('value',snap=>{
       if(remoteLock)return;
       const data=snap.val();
       if(!data)return;
       mergeRemote(data);
+    },err=>{
+      console.error('Firebase read error:',err);
+      setFbStatus('error');
     });
-  }catch(e){setFbStatus('error');console.error(e);}
+  }catch(e){
+    console.error('Firebase _doInit error:',e);
+    setFbStatus('error');
+    showToast('Firebase 연결 실패: '+e.message);
+  }
 }
 
 function setFbStatus(s){
   const dot=document.getElementById('fb-dot'),txt=document.getElementById('fb-txt');
-  if(s==='ok'){dot.className='ok';txt.textContent='동기화됨';}
+  if(s==='ok')        {dot.className='ok'; txt.textContent='동기화됨';}
   else if(s==='error'){dot.className='err';txt.textContent='연결 오류';}
   else if(s==='disconnected'){dot.className='';txt.textContent='오프라인';}
-  else{dot.className='';txt.textContent='연결 중…';}
+  else if(s==='connecting')  {dot.className='';txt.textContent='연결 중…';}
+  else                       {dot.className='';txt.textContent=s;}
 }
 
 function mergeRemote(data){
@@ -596,8 +688,29 @@ function mergeRemote(data){
 function saveToFirebase(){
   if(!fbEnabled||!fbRef)return;
   remoteLock=true;
-  const {set}=window.__FB;
-  set(fbRef,{tabs}).then(()=>{
+  fbRef.set({tabs}).then(()=>{
+    setTimeout(()=>remoteLock=false,500);
+    setFbStatus('ok');
+  }).catch(e=>{
+    remoteLock=false;
+    setFbStatus('error');
+    console.error('Firebase save error:',e);
+  });
+}
+
+function mergeRemote(data){
+  if(data.tabs){tabs=data.tabs;renderTabBar();}
+  if(data.tabs&&!tabs.find(t=>t.id===activeTabId)){
+    activeTabId=tabs[0]?.id;
+    if(activeTabId)document.getElementById('project-title-input').value=tab().title;
+  }
+  renderAll();
+}
+
+function saveToFirebase(){
+  if(!fbEnabled||!fbRef)return;
+  remoteLock=true;
+  fbRef.set({tabs}).then(()=>{
     setTimeout(()=>remoteLock=false,500);
     setFbStatus('ok');
   }).catch(e=>{remoteLock=false;setFbStatus('error');});
@@ -632,7 +745,7 @@ async function doLogin(){
 
   // Firebase 연결된 경우: Firebase 해시 우선
   if(fbEnabled&&fbDb){
-    const {get,ref,set}=window.__FB;
+    // compat SDK: fbDb 직접 사용
     try{
       const snap=await get(ref(fbDb,'auth/masterHash'));
       const storedHash=snap.val();
@@ -867,14 +980,61 @@ document.addEventListener('click',e=>{if(!e.target.closest('.ctx-menu'))hideCtx(
 function ctxDeleteNode(){if(ctxNodeId){deleteNode(ctxNodeId);hideCtx();ctxNodeId=null;}}
 function ctxEditNode(){
   const n=byId(ctxNodeId);if(!n)return;
-  document.getElementById('en-type').value=n.type;document.getElementById('en-name').value=n.name;document.getElementById('en-desc').value=n.desc||'';
+  document.getElementById('en-type').value=n.type;
+  document.getElementById('en-name').value=n.name;
+  document.getElementById('en-desc').value=n.desc||'';
+
+  // 현재 부모 엣지 찾기 (isParent=true 인 엣지 중 to===ctxNodeId)
+  const parentEdge=edges().find(e=>e.isParent&&e.to===ctxNodeId);
+  const currentParentId=parentEdge?parentEdge.from:null;
+
+  // 부모 선택 셀렉트 채우기 — 자기 자신과 자신의 자손은 제외
+  const descendants=getDescendants(ctxNodeId);
+  const sel=document.getElementById('en-parent');
+  sel.innerHTML='<option value="">없음 (최상위)</option>';
+  nodes().forEach(nd=>{
+    if(nd.id===ctxNodeId)return;          // 자기 자신 제외
+    if(descendants.has(nd.id))return;    // 자손 제외 (순환 방지)
+    const opt=document.createElement('option');
+    opt.value=nd.id;
+    opt.textContent=`${TI[nd.type]} ${nd.name}`;
+    if(nd.id===currentParentId)opt.selected=true;
+    sel.appendChild(opt);
+  });
+
   document.getElementById('edit-node-modal').classList.remove('hidden');hideCtx();
+}
+// 특정 노드의 모든 자손 id를 Set으로 반환 (순환 방지용)
+function getDescendants(nodeId){
+  const visited=new Set();
+  const queue=[nodeId];
+  while(queue.length){
+    const cur=queue.shift();
+    edges().filter(e=>e.isParent&&e.from===cur).forEach(e=>{
+      if(!visited.has(e.to)){visited.add(e.to);queue.push(e.to);}
+    });
+  }
+  return visited;
 }
 function closeEditNodeModal(){document.getElementById('edit-node-modal').classList.add('hidden');}
 function saveEditNodeModal(){
   if(!isEditMode)return;
   const n=byId(ctxNodeId);if(!n)return;
-  n.type=document.getElementById('en-type').value;n.name=document.getElementById('en-name').value.trim()||n.name;n.desc=document.getElementById('en-desc').value.trim();
+  n.type=document.getElementById('en-type').value;
+  n.name=document.getElementById('en-name').value.trim()||n.name;
+  n.desc=document.getElementById('en-desc').value.trim();
+
+  const newParentId=document.getElementById('en-parent').value||null;
+  const t=tab();
+
+  // 기존 부모 엣지(isParent) 제거
+  t.edges=t.edges.filter(e=>!(e.isParent&&e.to===ctxNodeId));
+
+  // 새 부모 엣지 추가
+  if(newParentId){
+    t.edges.push({id:gid(),from:newParentId,to:ctxNodeId,label:'',desc:'',isParent:true});
+  }
+
   renderAll();closeEditNodeModal();persist();
 }
 function ctxStartLink(){if(isEditMode&&ctxNodeId){startLink(ctxNodeId);hideCtx();}}
@@ -1083,74 +1243,84 @@ function addEventFromStory(body,time){const t=tab();const maxOrder=Math.max(0,..
 // SETTINGS
 // ══════════════════════════════════════════════════
 function openSettingsModal(){
-  const c=cfg();
-  document.getElementById('api-key-input').value=c.apiKey;
-  document.getElementById('google-api-input').value=c.googleKey;
+  const lc=cfg();
+  document.getElementById('api-key-input').value=lc.apiKey;
+  document.getElementById('google-api-input').value=lc.googleKey;
   document.getElementById('firebase-cfg-input').value=localStorage.getItem('wm_fbcfg')||'';
   document.getElementById('master-code-cur').value='';
   document.getElementById('master-code-new').value='';
   document.getElementById('mc-change-err').style.display='none';
+  document.getElementById('fb-save-msg').textContent=fbEnabled?'✓ 현재 연결됨':'';
   document.getElementById('settings-modal').classList.remove('hidden');
 }
 function closeSettingsModal(){document.getElementById('settings-modal').classList.add('hidden');}
-async function saveSettings(){
-  localStorage.setItem('wm_k',document.getElementById('api-key-input').value.trim());
-  localStorage.setItem('wm_gk',document.getElementById('google-api-input').value.trim());
-  const fbStr=document.getElementById('firebase-cfg-input').value.trim();
-  if(fbStr){localStorage.setItem('wm_fbcfg',fbStr);initFirebase();}
 
-  // 마스터 코드 변경 처리
+// ── 개별 저장 버튼 핸들러 ──
+function saveApiKey(){
+  const val=document.getElementById('api-key-input').value.trim();
+  if(!val){showToast('API 키를 입력하세요');return;}
+  localStorage.setItem('wm_k',val);
+  showToast('Anthropic API 키가 저장되었습니다 ✓');
+}
+function saveGoogleKey(){
+  const val=document.getElementById('google-api-input').value.trim();
+  if(!val){showToast('Google API 키를 입력하세요');return;}
+  localStorage.setItem('wm_gk',val);
+  showToast('Google API 키가 저장되었습니다 ✓');
+}
+async function saveFirebaseCfg(){
+  const fbStr=document.getElementById('firebase-cfg-input').value.trim();
+  if(!fbStr){showToast('Firebase JSON을 입력하세요');return;}
+  let parsed;
+  try{parsed=JSON.parse(fbStr);}catch(e){showToast('JSON 형식이 올바르지 않습니다');return;}
+  if(!parsed.databaseURL){showToast('databaseURL 항목이 없습니다');return;}
+  localStorage.setItem('wm_fbcfg',fbStr);
+  document.getElementById('fb-save-msg').textContent='연결 중…';
+  await initFirebase();
+  document.getElementById('fb-save-msg').textContent=fbEnabled?'✓ 연결 성공':'✗ 연결 실패 — 설정을 확인하세요';
+}
+async function saveMasterCode(){
   const curCode=document.getElementById('master-code-cur').value;
   const newCode=document.getElementById('master-code-new').value.trim();
-  if(newCode){
-    const newHash=await sha256(newCode);
-
-    // ── Firebase 연결된 경우 ──
-    if(fbEnabled&&fbDb){
-      const {get,set,ref}=window.__FB;
-      try{
-        const snap=await get(ref(fbDb,'auth/masterHash'));
-        const storedHash=snap.val();
-        if(!storedHash){
-          // 최초 등록
-          await set(ref(fbDb,'auth/masterHash'),newHash);
-          localStorage.setItem('wm_mh',newHash);
-          document.getElementById('mc-change-err').style.display='none';
-          showToast('마스터 코드가 설정되었습니다 ✓');
-        }else{
-          const curHash=await sha256(curCode);
-          if(curHash!==storedHash){
-            document.getElementById('mc-change-err').style.display='block';
-            return;
-          }
-          await set(ref(fbDb,'auth/masterHash'),newHash);
-          localStorage.setItem('wm_mh',newHash);
-          document.getElementById('mc-change-err').style.display='none';
-          showToast('마스터 코드가 변경되었습니다 ✓');
-        }
-      }catch(e){
-        // Firebase 실패 시 로컬 폴백
-        console.warn('Firebase 쓰기 실패, 로컬 저장',e);
-        localStorage.setItem('wm_mh',newHash);
-        showToast('마스터 코드 저장됨 (로컬) — Firebase 연결 상태를 확인해주세요');
-      }
-    }else{
-      // ── Firebase 미연결: localStorage만 사용 ──
-      const localHash=localStorage.getItem('wm_mh');
-      if(localHash){
+  if(!newCode){showToast('새 마스터 코드를 입력하세요');return;}
+  const newHash=await sha256(newCode);
+  if(fbEnabled&&fbDb){
+    try{
+      const snap=await fbDb.ref('auth/masterHash').once('value');
+      const storedHash=snap.val();
+      if(storedHash){
         const curHash=await sha256(curCode);
-        if(curHash!==localHash){
-          document.getElementById('mc-change-err').style.display='block';
-          return;
-        }
+        if(curHash!==storedHash){document.getElementById('mc-change-err').style.display='block';return;}
       }
+      await set(ref(fbDb,'auth/masterHash'),newHash);
       localStorage.setItem('wm_mh',newHash);
       document.getElementById('mc-change-err').style.display='none';
-      showToast('마스터 코드 저장됨 (로컬) — Firebase 연결을 권장합니다');
+      document.getElementById('master-code-cur').value='';
+      document.getElementById('master-code-new').value='';
+      showToast('마스터 코드가 변경되었습니다 ✓');
+    }catch(e){showToast('오류: '+e.message);}
+  }else{
+    const localHash=localStorage.getItem('wm_mh');
+    if(localHash){
+      const curHash=await sha256(curCode);
+      if(curHash!==localHash){document.getElementById('mc-change-err').style.display='block';return;}
     }
+    localStorage.setItem('wm_mh',newHash);
+    document.getElementById('mc-change-err').style.display='none';
+    document.getElementById('master-code-cur').value='';
+    document.getElementById('master-code-new').value='';
+    showToast('마스터 코드가 저장되었습니다 ✓');
   }
+}
 
-  closeSettingsModal();showToast('설정이 저장되었습니다 ✓');
+// 기존 saveSettings — 마스터 코드 변경 처리 부분만 남김 (하위 호환)
+async function saveSettings(){
+  // 개별 저장 버튼으로 대체됨 — 더 이상 여기서 저장하지 않음
+  // Firebase 설정만 처리 (설정창 닫기 전 마지막 체크)
+  const fbStr=document.getElementById('firebase-cfg-input').value.trim();
+  if(fbStr&&!fbEnabled){localStorage.setItem('wm_fbcfg',fbStr);initFirebase();}
+
+  closeSettingsModal();
 }
 
 // ══════════════════════════════════════════════════
@@ -1285,25 +1455,38 @@ function openProtagonist(nodeId){
   const panel=document.getElementById('protagonist-panel');panel.classList.add('visible');
   const n=byId(nodeId);if(!n)return;
   document.getElementById('protagonist-node-name').textContent=`대상: [${TL[n.type]}] ${n.name}`;
-  document.getElementById('protagonist-story').innerHTML='<div class="ld"><span></span><span></span><span></span></div>';
   document.getElementById('protagonist-img-wrap').style.display='none';
   protagonistStory='';
+  startProtagonistLoading();
   fetchProtagonistStory(nodeId);
 }
 function closeProtagonist(){document.getElementById('protagonist-panel').classList.remove('visible');}
+function startProtagonistLoading(){
+  document.getElementById('protagonist-story').innerHTML='<div class="ld"><span></span><span></span><span></span></div>';
+  const btn=document.getElementById('btn-regen');
+  if(btn){btn.disabled=true;btn.textContent='생성 중…';}
+}
+function endProtagonistLoading(){
+  const btn=document.getElementById('btn-regen');
+  if(btn){btn.disabled=false;btn.textContent='↻ 다시 추천';}
+}
 async function fetchProtagonistStory(nodeId){
   const apiKey=await getApiKey();
   const storyEl=document.getElementById('protagonist-story');
-  if(!apiKey){storyEl.textContent='API 키가 설정되지 않았습니다.';return;}
-  const n=byId(nodeId);const t=tab();
-  // find protagonist node
+  if(!apiKey){storyEl.textContent='API 키가 설정되지 않았습니다. ⚙ 설정에서 입력해주세요.';endProtagonistLoading();return;}
+  const n=byId(nodeId);if(!n){endProtagonistLoading();return;}
+  const t=tab();
   const hero=nodes().find(nd=>/주인공/i.test(nd.name));
-  // find nodes connected to target
   const connectedIds=edges().filter(e=>e.from===nodeId||e.to===nodeId).map(e=>e.from===nodeId?e.to:e.from);
   const connected=connectedIds.map(id=>byId(id)).filter(Boolean);
+  const sys='창작 세계관의 스토리텔러. 주인공의 상호작용 장면을 생생하게 2-3문단으로 묘사하세요. 장소면 방문, 인물이면 대화, 사물이면 획득/관찰, 사건이면 체험. 연결된 인물이 있으면 함께 등장시키세요. 반드시 완결된 장면으로 끝내세요.';
+  const usr=`세계관: ${(t.worldPrompt||'없음').slice(0,150)}
+주인공: ${hero?hero.name+' - '+(hero.desc||'').slice(0,80):'(주인공 노드 없음)'}
+대상: [${TL[n.type]}] ${n.name} - ${(n.desc||'').slice(0,100)}
+연결 노드: ${connected.map(nd=>`[${TL[nd.type]}]${nd.name}`).join(', ')||'없음'}
+관계: ${edgeCtx().slice(0,300)}
 
-  const sys='창작 세계관의 스토리텔러. 주인공의 상호작용 장면을 생생하게 1-2문단으로 묘사하세요. 장소면 방문, 인물이면 대화, 사물이면 획득/관찰, 사건이면 체험. 연결된 인물이 있으면 함께 등장시키세요.';
-  const usr=`세계관: ${(t.worldPrompt||'없음').slice(0,120)}\n주인공: ${hero?hero.name+' - '+hero.desc:'(이름이 주인공인 노드를 찾지 못함)'}\n대상 노드: [${TL[n.type]}] ${n.name} - ${n.desc||''}\n연결된 노드: ${connected.map(c=>`[${TL[c.type]}]${c.name}`).join(', ')||'없음'}\n전체 관계: ${edgeCtx().slice(0,400)}\n\n주인공이 위 대상과 상호작용하는 장면을 묘사하세요.`;
+주인공 상호작용 장면을 묘사하세요.`;
   try{
     const r=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
@@ -1315,24 +1498,32 @@ async function fetchProtagonistStory(nodeId){
       },
       body:JSON.stringify({
         model:'claude-sonnet-4-5-20251001',
-        max_tokens:500,
+        max_tokens:1200,
         system:sys,
         messages:[{role:'user',content:usr}]
       })
     });
     const data=await r.json();
-    protagonistStory=data.content?data.content.map(c=>c.text||'').join(''):'오류가 발생했습니다.';
+    if(!r.ok){storyEl.textContent='API 오류: '+(data?.error?.message||`HTTP ${r.status}`);endProtagonistLoading();return;}
+    protagonistStory=data.content?data.content.map(x=>x.text||'').join(''):'오류가 발생했습니다.';
     storyEl.textContent=protagonistStory;
+    const sa=document.getElementById('protagonist-scroll-area');if(sa)sa.scrollTop=0;
   }catch(e){storyEl.textContent='오류: '+e.message;}
+  endProtagonistLoading();
 }
-function protagonistRegen(){if(protagonistNodeId)fetchProtagonistStory(protagonistNodeId);}
+function protagonistRegen(){
+  if(!protagonistNodeId)return;
+  document.getElementById('protagonist-img-wrap').style.display='none';
+  protagonistStory='';
+  startProtagonistLoading();
+  fetchProtagonistStory(protagonistNodeId);
+}
 async function protagonistGenImg(){
   const googleKey=await getGoogleKey();
   if(!googleKey){showToast('Google API 키가 설정되지 않았습니다');return;}
   if(!protagonistStory){showToast('먼저 장면을 생성하세요');return;}
   const t=tab();
   const btn=document.getElementById('btn-gen-img');btn.textContent='생성 중…';btn.disabled=true;
-  // Build style hint from ref images
   const refHint=t.refImages?.filter(Boolean).length?'(참고 그림체 이미지 있음, 해당 스타일로)':'';
   const prompt=`${protagonistStory.slice(0,300)} ${refHint} 애니메이션 일러스트 스타일`;
   try{
@@ -1343,8 +1534,7 @@ async function protagonistGenImg(){
     const data=await r.json();
     const imgPart=data.candidates?.[0]?.content?.parts?.find(p=>p.inlineData);
     if(imgPart){
-      const imgEl=document.getElementById('protagonist-img');
-      imgEl.src=`data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
+      document.getElementById('protagonist-img').src=`data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
       document.getElementById('protagonist-img-wrap').style.display='block';
     }else{showToast('이미지 생성에 실패했습니다');}
   }catch(e){showToast('이미지 생성 오류: '+e.message);}
@@ -1376,8 +1566,63 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 // ══════════════════════════════════════════════════
 // BOOT
 // ══════════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded',init);
+document.addEventListener('DOMContentLoaded',()=>{
+  // Firebase 설정이 있으면 연결 중 상태로 먼저 표시
+  if(localStorage.getItem('wm_fbcfg')){setFbStatus('connecting');}
+  else{setFbStatus('disconnected');}
+  init();
+});
 setInterval(()=>{saveLocal();if(fbEnabled)saveToFirebase();},60000);
 </script>
 </body>
-</html>
+</html>async function saveSettings(){
+  // API 키 저장
+  const ak=document.getElementById('api-key-input').value.trim();
+  const gk=document.getElementById('google-api-input').value.trim();
+  if(ak)localStorage.setItem('wm_k',ak);
+  if(gk)localStorage.setItem('wm_gk',gk);
+
+  // Firebase 설정 저장 및 연결
+  const fbStr=document.getElementById('firebase-cfg-input').value.trim();
+  if(fbStr){localStorage.setItem('wm_fbcfg',fbStr);initFirebase();}
+
+  // 마스터 코드 변경
+  const curCode=document.getElementById('master-code-cur').value;
+  const newCode=document.getElementById('master-code-new').value.trim();
+  if(newCode){
+    const newHash=await sha256(newCode);
+    if(fbEnabled&&fbDb){
+      try{
+        const snap=await fbDb.ref('auth/masterHash').once('value');
+        const storedHash=snap.val();
+        if(!storedHash){
+          await fbDb.ref('auth/masterHash').set(newHash);
+          localStorage.setItem('wm_mh',newHash);
+          document.getElementById('mc-change-err').style.display='none';
+          showToast('마스터 코드가 설정되었습니다 ✓');
+        }else{
+          const curHash=await sha256(curCode);
+          if(curHash!==storedHash){document.getElementById('mc-change-err').style.display='block';return;}
+          await fbDb.ref('auth/masterHash').set(newHash);
+          localStorage.setItem('wm_mh',newHash);
+          document.getElementById('mc-change-err').style.display='none';
+          showToast('마스터 코드가 변경되었습니다 ✓');
+        }
+      }catch(e){
+        console.warn('Firebase 마스터코드 저장 실패:',e);
+        localStorage.setItem('wm_mh',newHash);
+        showToast('마스터 코드 저장됨 (로컬)');
+      }
+    }else{
+      const localHash=localStorage.getItem('wm_mh');
+      if(localHash){
+        const curHash=await sha256(curCode);
+        if(curHash!==localHash){document.getElementById('mc-change-err').style.display='block';return;}
+      }
+      localStorage.setItem('wm_mh',newHash);
+      showToast('마스터 코드 저장됨 (로컬)');
+    }
+  }
+
+  closeSettingsModal();showToast('설정이 저장되었습니다 ✓');
+}
