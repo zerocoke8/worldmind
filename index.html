@@ -504,6 +504,23 @@ async function callAnthropicAPI({system,messages,maxTokens=800}){
   return data.content?data.content.map(c=>c.text||'').join(''):'';
 }
 
+// ── 잘린 JSON 복구 헬퍼 ──
+function repairJSON(s){
+  let str=s.trim();
+  // 열린 따옴표 닫기
+  const quotes=(str.match(/"/g)||[]).length;
+  if(quotes%2!==0)str+='"';
+  // 누락된 닫는 중괄호/대괄호 추가
+  let braces=0,brackets=0;
+  for(const c of str){if(c==='{')braces++;else if(c==='}')braces--;else if(c==='[')brackets++;else if(c===']')brackets--;}
+  // 마지막 값이 누락된 경우 처리 (예: "order": 로 끝남)
+  str=str.replace(/,\s*"[^"]*"\s*:\s*$/,'');  // 값 없는 마지막 키 제거
+  str=str.replace(/,\s*$/,'');                 // 마지막 콤마 제거
+  while(braces-->0)str+='}';
+  while(brackets-->0)str+=']';
+  return str;
+}
+
 // ══════════════════════════════════════════════════
 // APP STATE
 // ══════════════════════════════════════════════════
@@ -1225,12 +1242,12 @@ function refreshEventsList(){
 async function generateEvent(){
   const genBtn=document.getElementById('events-gen-btn');genBtn.textContent='생성 중…';genBtn.disabled=true;
   const t=tab();
-  const sys=`당신은 창작 세계관의 스토리텔러입니다. 반드시 JSON으로만 응답하세요.\n형식: {"time":"시간 표현(예: 1년 전, 사건 초반)","body":"사건 내용","order":정수(낮을수록 과거)}`;
+  const sys=`당신은 창작 세계관의 스토리텔러입니다. 반드시 JSON으로만 응답하세요. 가능한 짧게 작성하세요.\n형식: {"time":"시간 표현(예: 1년 전, 사건 초반)","body":"사건 내용(3문장 이내)","order":정수(낮을수록 과거)}`;
   const usr=`세계관: ${t.worldPrompt||'없음'}\n노드:\n${nodeCtx()}\n관계:\n${edgeCtx()}\n기존사건:\n${eventCtx()}\n\n위 정보를 바탕으로 일어날만한 새로운 사건 1개를 생성하고, 기존 사건들 사이의 시간 순서에서 어디에 위치하는지 order로 표현하세요.`;
   try{
-    const text=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}],maxTokens:400});
+    const text=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}],maxTokens:800});
     const clean=text.replace(/```json|```/g,'').trim();
-    const ev=JSON.parse(clean);
+    const ev=JSON.parse(repairJSON(clean));
     ev.id=gid();t.events.push(ev);persist();refreshEventsList();showToast('사건이 생성되었습니다 ✓');
   }catch(e){showToast('생성 오류: '+e.message);}
   genBtn.textContent='⚡ 새 사건 AI 생성';genBtn.disabled=false;
@@ -1376,7 +1393,7 @@ async function callAI(sys,usr,onSuccess){
       return;
     }
     try{
-      onSuccess(JSON.parse(jsonMatch[0]));
+      onSuccess(JSON.parse(repairJSON(jsonMatch[0])));
     }catch(pe){
       showSugErr('JSON 파싱 오류: '+pe.message);
       console.error('JSON parse error:',jsonMatch[0]);
