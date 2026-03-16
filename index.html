@@ -1573,9 +1573,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   init();
 });
 setInterval(()=>{saveLocal();if(fbEnabled)saveToFirebase();},60000);
-</script>
-</body>
-</html>async function saveSettings(){
+
+async function saveSettings(){
   // API 키 저장
   const ak=document.getElementById('api-key-input').value.trim();
   const gk=document.getElementById('google-api-input').value.trim();
@@ -1626,3 +1625,6 @@ setInterval(()=>{saveLocal();if(fbEnabled)saveToFirebase();},60000);
 
   closeSettingsModal();showToast('설정이 저장되었습니다 ✓');
 }
+</script>
+</body>
+</html>
