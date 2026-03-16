@@ -1201,7 +1201,7 @@ async function sendChat(){
         'anthropic-dangerous-direct-browser-access':'true'
       },
       body:JSON.stringify({
-        model:'claude-sonnet-4-5-20251001',
+        model:'claude-opus-4-6',
         max_tokens:800,
         system:sys,
         messages:chatHistory.map(m=>({role:m.role,content:m.content}))
@@ -1246,7 +1246,7 @@ async function generateEvent(){
         'anthropic-dangerous-direct-browser-access':'true'
       },
       body:JSON.stringify({
-        model:'claude-sonnet-4-5-20251001',
+        model:'claude-opus-4-6',
         max_tokens:400,
         system:sys,
         messages:[{role:'user',content:usr}]
@@ -1414,7 +1414,7 @@ async function callAI(sys,usr,onSuccess){
         'anthropic-dangerous-direct-browser-access':'true'
       },
       body:JSON.stringify({
-        model:'claude-sonnet-4-5-20251001',
+        model:'claude-opus-4-6',
         max_tokens:800,
         system:sys,
         messages:[{role:'user',content:usr}]
@@ -1424,7 +1424,8 @@ async function callAI(sys,usr,onSuccess){
     if(!r.ok){
       const msg=data?.error?.message||`HTTP ${r.status}`;
       showSugErr('API 오류: '+msg);
-      console.error('API error detail:',data);
+      showToast('API 오류: '+msg);
+      console.error('API error detail (status '+r.status+'):', JSON.stringify(data));
       return;
     }
     const text=data.content.map(b=>b.text||'').join('');
@@ -1521,7 +1522,7 @@ async function fetchProtagonistStory(nodeId){
         'anthropic-dangerous-direct-browser-access':'true'
       },
       body:JSON.stringify({
-        model:'claude-sonnet-4-5-20251001',
+        model:'claude-opus-4-6',
         max_tokens:1200,
         system:sys,
         messages:[{role:'user',content:usr}]
@@ -1551,7 +1552,7 @@ async function protagonistGenImg(){
   const refHint=t.refImages?.filter(Boolean).length?'(참고 그림체 이미지 있음, 해당 스타일로)':'';
   const prompt=`${protagonistStory.slice(0,300)} ${refHint} 애니메이션 일러스트 스타일`;
   try{
-    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${googleKey}`,{
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${googleKey}`,{
       method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({contents:[{parts:[{text:`Generate an anime illustration: ${prompt}`}]}],generationConfig:{responseModalities:['IMAGE','TEXT']}})
     });
