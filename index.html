@@ -606,66 +606,63 @@ function initFirebase(){
   const cfgStr=localStorage.getItem('wm_fbcfg');
   if(!cfgStr){setFbStatus('disconnected');return;}
 
-  // JS 객체 형식 / 중복 JSON / 일반 JSON 모두 허용
-  // Firebase 설정 파싱 — JSON / JS객체 / const선언 모두 허용
   let fbCfg;
   try{
     fbCfg=parseFirebaseCfg(cfgStr);
-  }catch(e2){
+  }catch(e){
     setFbStatus('error');
-    showToast('Firebase 설정 오류: '+e2.message);
-    console.error('Firebase config error:',e2,'\nInput was:',cfgStr);
+    console.error('Firebase config parse error:',e);
     return;
   }
-
   if(!fbCfg||!fbCfg.databaseURL){
     setFbStatus('error');
-    showToast('Firebase 설정에 databaseURL이 없습니다');
-    console.error('Missing databaseURL in Firebase config');
+    console.error('databaseURL missing');
     return;
   }
 
   setFbStatus('connecting');
 
-  try{
-    // 기존 앱 모두 삭제 후 재초기화
-    if(firebase.apps&&firebase.apps.length){
-      Promise.all(firebase.apps.map(app=>app.delete())).then(()=>{
-        _doInitFirebase(fbCfg);
-      });
-    }else{
-      _doInitFirebase(fbCfg);
-    }
-  }catch(e){
-    console.error('Firebase init error:',e);
+  // firebase 전역이 아직 로드 안 됐을 경우 대비
+  if(typeof firebase==='undefined'){
+    console.error('Firebase SDK not loaded');
     setFbStatus('error');
-    showToast('Firebase 연결 실패: '+e.message);
+    return;
   }
-}
 
-function _doInitFirebase(fbCfg){
   try{
-    const app=firebase.initializeApp(fbCfg);
-    fbDb=firebase.database(app);
+    // 기존 앱 동기적으로 정리 (compat SDK는 앱 이름으로 구분)
+    const appName='worldmind';
+    let app;
+    try{
+      // 이미 같은 이름의 앱이 있으면 삭제
+      const existing=firebase.app(appName);
+      existing.delete().catch(()=>{});
+    }catch(e){
+      // 앱이 없으면 무시
+    }
+    app=firebase.initializeApp(fbCfg, appName);
+    fbDb=app.database();
     fbRef=fbDb.ref('worldmind');
     fbEnabled=true;
     setFbStatus('ok');
 
-    fbRef.on('value',snap=>{
+    // 실시간 데이터 수신
+    fbRef.on('value', snap=>{
       if(remoteLock)return;
       const data=snap.val();
       if(!data)return;
       mergeRemote(data);
-    },err=>{
+    }, err=>{
       console.error('Firebase read error:',err);
       setFbStatus('error');
     });
+
   }catch(e){
-    console.error('Firebase _doInit error:',e);
+    console.error('Firebase init error:',e);
     setFbStatus('error');
-    showToast('Firebase 연결 실패: '+e.message);
   }
 }
+
 
 function setFbStatus(s){
   const dot=document.getElementById('fb-dot'),txt=document.getElementById('fb-txt');
