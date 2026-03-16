@@ -607,6 +607,8 @@ function saveToFirebase(){
 // PERSISTENCE (localStorage fallback)
 // ══════════════════════════════════════════════════
 function cfg(){return{apiKey:localStorage.getItem('wm_k')||'',googleKey:localStorage.getItem('wm_gk')||''};}
+async function getApiKey(){return cfg().apiKey;}
+async function getGoogleKey(){return cfg().googleKey;}
 function saveLocal(){localStorage.setItem('wm_tabs',JSON.stringify(tabs));}
 function loadLocal(){
   try{const t=localStorage.getItem('wm_tabs');if(t)tabs=JSON.parse(t);}catch(e){}
@@ -1001,7 +1003,7 @@ async function sendChat(){
   inp.value='';
   chatHistory.push({role:'user',content:q});appendChatMsg('user',q);
   appendChatMsg('ai','…');
-  const {apiKey}=cfg();
+  const apiKey=await getApiKey();
   if(!apiKey){const msgs=document.getElementById('chat-msgs');msgs.lastChild.textContent='API 키가 설정되지 않았습니다.';return;}
   const t=tab();
   const sys=`당신은 창작 세계관의 조언자입니다. 아래 세계관 정보를 바탕으로 질문에 자세히 답하세요.\n\n세계관 프롬프트: ${t.worldPrompt||'(없음)'}\n\n노드 목록:\n${nodeCtx()}\n\n관계 목록:\n${edgeCtx()}`;
@@ -1031,7 +1033,7 @@ function refreshEventsList(){
   });
 }
 async function generateEvent(){
-  const {apiKey}=cfg();if(!apiKey){showToast('API 키가 설정되지 않았습니다');return;}
+  const apiKey=await getApiKey();if(!apiKey){showToast('API 키가 설정되지 않았습니다');return;}
   const genBtn=document.getElementById('events-gen-btn');genBtn.textContent='생성 중…';genBtn.disabled=true;
   const t=tab();
   const sys=`당신은 창작 세계관의 스토리텔러입니다. 반드시 JSON으로만 응답하세요.\n형식: {"time":"시간 표현(예: 1년 전, 사건 초반)","body":"사건 내용","order":정수(낮을수록 과거)}`;
@@ -1057,7 +1059,6 @@ function openSettingsModal(){
   document.getElementById('api-key-input').value=c.apiKey;
   document.getElementById('google-api-input').value=c.googleKey;
   document.getElementById('firebase-cfg-input').value=localStorage.getItem('wm_fbcfg')||'';
-  // 마스터 코드 필드는 비워둠 — 변경할 때만 입력
   document.getElementById('master-code-cur').value='';
   document.getElementById('master-code-new').value='';
   document.getElementById('mc-change-err').style.display='none';
@@ -1152,7 +1153,7 @@ function setLoading(){document.getElementById('sug-cards').innerHTML='<div class
 function showSugErr(msg){document.getElementById('sug-cards').innerHTML=`<div class="sug-card" style="grid-column:1/-1;cursor:default;text-align:center;color:var(--danger);font-size:12px;padding:16px">⚠ ${esc(msg)}</div>`;}
 
 async function fetchNodeSug(mode,nodeId){
-  const {apiKey}=cfg();if(!apiKey){showSugErr('API 키가 설정되지 않았습니다. ⚙ 설정에서 입력해주세요.');return;}
+  const apiKey=await getApiKey();if(!apiKey){showSugErr('API 키가 설정되지 않았습니다. ⚙ 설정에서 입력해주세요.');return;}
   const n=byId(nodeId);if(!n)return;
   const t=tab();
   const pe=edges().find(e=>e.to===nodeId),pn=pe?byId(pe.from):null;
@@ -1169,7 +1170,7 @@ async function fetchNodeSug(mode,nodeId){
 }
 
 async function fetchEdgeSug(edgeId){
-  const {apiKey}=cfg();if(!apiKey){showSugErr('API 키가 설정되지 않았습니다.');return;}
+  const apiKey=await getApiKey();if(!apiKey){showSugErr('API 키가 설정되지 않았습니다.');return;}
   const e=edgeById(edgeId);if(!e)return;
   const fn=byId(e.from),tn=byId(e.to);
   const t=tab();const title=document.getElementById('project-title-input').value;
@@ -1179,7 +1180,7 @@ async function fetchEdgeSug(edgeId){
 }
 
 async function callAI(sys,usr,onSuccess){
-  const {apiKey}=cfg();
+  const apiKey=await getApiKey();
   try{
     const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,system:sys,messages:[{role:'user',content:usr}]})});
     if(!r.ok){const err=await r.json();showSugErr('API 오류: '+(err.error?.message||r.status));return;}
@@ -1235,7 +1236,7 @@ function openProtagonist(nodeId){
 }
 function closeProtagonist(){document.getElementById('protagonist-panel').classList.remove('visible');}
 async function fetchProtagonistStory(nodeId){
-  const {apiKey}=cfg();
+  const apiKey=await getApiKey();
   const storyEl=document.getElementById('protagonist-story');
   if(!apiKey){storyEl.textContent='API 키가 설정되지 않았습니다.';return;}
   const n=byId(nodeId);const t=tab();
@@ -1256,7 +1257,7 @@ async function fetchProtagonistStory(nodeId){
 }
 function protagonistRegen(){if(protagonistNodeId)fetchProtagonistStory(protagonistNodeId);}
 async function protagonistGenImg(){
-  const {googleKey}=cfg();
+  const googleKey=await getGoogleKey();
   if(!googleKey){showToast('Google API 키가 설정되지 않았습니다');return;}
   if(!protagonistStory){showToast('먼저 장면을 생성하세요');return;}
   const t=tab();
