@@ -456,7 +456,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
 </div>
 <div id="toast"></div>
 
-<script>
+<script defer>
 // ══════════════════════════════════════════════════
 // CONSTANTS
 // ══════════════════════════════════════════════════
@@ -559,15 +559,14 @@ function renderTabBar(){
 }
 
 // title sync
-document.addEventListener('DOMContentLoaded',()=>{
-  const ti=document.getElementById('project-title-input');
-  if(ti)ti.addEventListener('input',()=>{if(tab())tab().title=ti.value;renderTabBar();saveToFirebase();});
-});
+// defer로 인해 DOM이 준비된 상태
+const ti=document.getElementById('project-title-input');
+if(ti)ti.addEventListener('input',()=>{if(tab())tab().title=ti.value;renderTabBar();saveToFirebase();});
 
 // ══════════════════════════════════════════════════
 // FIREBASE
 // ══════════════════════════════════════════════════
-async // Firebase 설정 파싱 — JSON / JS객체 / const선언 모두 지원
+// Firebase 설정 파싱 — JSON / JS객체 / const선언 모두 지원
 function parseFirebaseCfg(input){
   let s=input.trim();
 
@@ -622,7 +621,7 @@ function initFirebase(){
 
   setFbStatus('connecting');
 
-  // firebase 전역이 아직 로드 안 됐을 경우 대비
+  // Firebase SDK 확인
   if(typeof firebase==='undefined'){
     console.error('Firebase SDK not loaded');
     setFbStatus('error');
@@ -630,35 +629,29 @@ function initFirebase(){
   }
 
   try{
-    // 기존 앱 동기적으로 정리 (compat SDK는 앱 이름으로 구분)
     const appName='worldmind';
-    let app;
-    try{
-      // 이미 같은 이름의 앱이 있으면 삭제
-      const existing=firebase.app(appName);
-      existing.delete().catch(()=>{});
-    }catch(e){
-      // 앱이 없으면 무시
-    }
-    app=firebase.initializeApp(fbCfg, appName);
+    // 기존 앱 정리
+    try{firebase.app(appName).delete();}catch(e){}
+    const app=firebase.initializeApp(fbCfg,appName);
     fbDb=app.database();
     fbRef=fbDb.ref('worldmind');
     fbEnabled=true;
     setFbStatus('ok');
 
-    // 실시간 데이터 수신
-    fbRef.on('value', snap=>{
+    fbRef.on('value',snap=>{
       if(remoteLock)return;
       const data=snap.val();
       if(!data)return;
       mergeRemote(data);
-    }, err=>{
-      console.error('Firebase read error:',err);
+    },err=>{
+      console.error('Firebase read error:',err.code, err.message);
+      showToast('Firebase 읽기 오류: '+err.message);
       setFbStatus('error');
     });
 
   }catch(e){
-    console.error('Firebase init error:',e);
+    console.error('Firebase init error:',e.code, e.message, e);
+    showToast('Firebase 오류: '+e.message);
     setFbStatus('error');
   }
 }
@@ -666,11 +659,11 @@ function initFirebase(){
 
 function setFbStatus(s){
   const dot=document.getElementById('fb-dot'),txt=document.getElementById('fb-txt');
-  if(s==='ok')        {dot.className='ok'; txt.textContent='동기화됨';}
-  else if(s==='error'){dot.className='err';txt.textContent='연결 오류';}
+  if(s==='ok')             {dot.className='ok'; txt.textContent='동기화됨';}
+  else if(s==='error')     {dot.className='err';txt.textContent='연결 오류 (F12 콘솔 확인)';}
   else if(s==='disconnected'){dot.className='';txt.textContent='오프라인';}
-  else if(s==='connecting')  {dot.className='';txt.textContent='연결 중…';}
-  else                       {dot.className='';txt.textContent=s;}
+  else if(s==='connecting') {dot.className='';txt.textContent='연결 중…';}
+  else                      {dot.className='';txt.textContent=s;}
 }
 
 function mergeRemote(data){
@@ -1563,12 +1556,10 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 // ══════════════════════════════════════════════════
 // BOOT
 // ══════════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded',()=>{
-  // Firebase 설정이 있으면 연결 중 상태로 먼저 표시
-  if(localStorage.getItem('wm_fbcfg')){setFbStatus('connecting');}
-  else{setFbStatus('disconnected');}
-  init();
-});
+// defer 속성으로 인해 DOM 준비 후 자동 실행
+if(localStorage.getItem('wm_fbcfg')){setFbStatus('connecting');}
+else{setFbStatus('disconnected');}
+init();
 setInterval(()=>{saveLocal();if(fbEnabled)saveToFirebase();},60000);
 
 async function saveSettings(){
