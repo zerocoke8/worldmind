@@ -668,7 +668,17 @@ function setFbStatus(s){
 }
 
 function mergeRemote(data){
-  if(data.tabs){tabs=data.tabs;renderTabBar();}
+  if(data.tabs){
+    tabs=data.tabs;
+    // 각 탭의 필수 배열 보장
+    tabs.forEach(t=>{
+      if(!t.nodes)t.nodes=[];
+      if(!t.edges)t.edges=[];
+      if(!t.events)t.events=[];
+      if(!t.refImages)t.refImages=[];
+    });
+    renderTabBar();
+  }
   if(data.tabs&&!tabs.find(t=>t.id===activeTabId)){
     activeTabId=tabs[0]?.id;
     if(activeTabId)document.getElementById('project-title-input').value=tab().title;
@@ -690,7 +700,17 @@ function saveToFirebase(){
 }
 
 function mergeRemote(data){
-  if(data.tabs){tabs=data.tabs;renderTabBar();}
+  if(data.tabs){
+    tabs=data.tabs;
+    // 각 탭의 필수 배열 보장
+    tabs.forEach(t=>{
+      if(!t.nodes)t.nodes=[];
+      if(!t.edges)t.edges=[];
+      if(!t.events)t.events=[];
+      if(!t.refImages)t.refImages=[];
+    });
+    renderTabBar();
+  }
   if(data.tabs&&!tabs.find(t=>t.id===activeTabId)){
     activeTabId=tabs[0]?.id;
     if(activeTabId)document.getElementById('project-title-input').value=tab().title;
@@ -715,7 +735,19 @@ async function getApiKey(){return cfg().apiKey;}
 async function getGoogleKey(){return cfg().googleKey;}
 function saveLocal(){localStorage.setItem('wm_tabs',JSON.stringify(tabs));}
 function loadLocal(){
-  try{const t=localStorage.getItem('wm_tabs');if(t)tabs=JSON.parse(t);}catch(e){}
+  try{
+    const t=localStorage.getItem('wm_tabs');
+    if(t){
+      tabs=JSON.parse(t);
+      // 각 탭의 필수 배열 보장
+      tabs.forEach(t=>{
+        if(!t.nodes)t.nodes=[];
+        if(!t.edges)t.edges=[];
+        if(!t.events)t.events=[];
+        if(!t.refImages)t.refImages=[];
+      });
+    }
+  }catch(e){}
 }
 
 // ── SHA-256 HASH HELPER ──
@@ -734,15 +766,14 @@ async function doLogin(){
   if(!code){document.getElementById('login-err').style.display='block';return;}
   const inputHash=await sha256(code);
 
-  // Firebase 연결된 경우: Firebase 해시 우선
+  // Firebase 연결된 경우: Firebase 해시 우선 (compat SDK)
   if(fbEnabled&&fbDb){
-    // compat SDK: fbDb 직접 사용
     try{
-      const snap=await get(ref(fbDb,'auth/masterHash'));
+      const snap=await fbDb.ref('auth/masterHash').once('value');
       const storedHash=snap.val();
       if(!storedHash){
         // 최초 등록
-        await set(ref(fbDb,'auth/masterHash'),inputHash);
+        await fbDb.ref('auth/masterHash').set(inputHash);
         localStorage.setItem('wm_mh',inputHash);
         isEditMode=true;updateEditUI();closeLoginModal();showToast('마스터 코드가 등록되었습니다 ✓');
         return;
@@ -1017,6 +1048,8 @@ function saveEditNodeModal(){
 
   const newParentId=document.getElementById('en-parent').value||null;
   const t=tab();
+  if(!t)return;
+  if(!t.edges)t.edges=[];
 
   // 기존 부모 엣지(isParent) 제거
   t.edges=t.edges.filter(e=>!(e.isParent&&e.to===ctxNodeId));
