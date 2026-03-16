@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
 <!-- Firebase Compat SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js" onload="window.__fbReady=true;if(window.__domReady)startApp();"></script>
 
 <style>
 :root{
@@ -456,7 +456,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
 </div>
 <div id="toast"></div>
 
-<script defer>
+<script>
 // ══════════════════════════════════════════════════
 // CONSTANTS
 // ══════════════════════════════════════════════════
@@ -489,10 +489,10 @@ const gid=()=>'i'+(idC++);
 // ══════════════════════════════════════════════════
 // TAB HELPERS
 // ══════════════════════════════════════════════════
-function tab(){return tabs.find(t=>t.id===activeTabId)||tabs[0];}
-function nodes(){return tab()?tab().nodes:[];}
-function edges(){return tab()?tab().edges:[];}
-function events(){return tab()?tab().events:[];}
+function tab(){return tabs.find(t=>t.id===activeTabId)||tabs[0]||null;}
+function nodes(){const t=tab();return(t&&t.nodes)?t.nodes:[];}
+function edges(){const t=tab();return(t&&t.edges)?t.edges:[];}
+function events(){const t=tab();return(t&&t.events)?t.events:[];}
 function byId(id){return nodes().find(n=>n.id===id);}
 function edgeById(id){return edges().find(e=>e.id===id);}
 
@@ -559,9 +559,10 @@ function renderTabBar(){
 }
 
 // title sync
-// defer로 인해 DOM이 준비된 상태
-const ti=document.getElementById('project-title-input');
-if(ti)ti.addEventListener('input',()=>{if(tab())tab().title=ti.value;renderTabBar();saveToFirebase();});
+document.addEventListener('DOMContentLoaded',()=>{
+  const ti=document.getElementById('project-title-input');
+  if(ti)ti.addEventListener('input',()=>{if(tab())tab().title=ti.value;renderTabBar();saveToFirebase();});
+});
 
 // ══════════════════════════════════════════════════
 // FIREBASE
@@ -1556,10 +1557,16 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 // ══════════════════════════════════════════════════
 // BOOT
 // ══════════════════════════════════════════════════
-// defer 속성으로 인해 DOM 준비 후 자동 실행
-if(localStorage.getItem('wm_fbcfg')){setFbStatus('connecting');}
-else{setFbStatus('disconnected');}
-init();
+// DOM + Firebase SDK 양쪽 준비 완료 시 앱 시작
+function startApp(){
+  if(localStorage.getItem('wm_fbcfg')){setFbStatus('connecting');}
+  else{setFbStatus('disconnected');}
+  init();
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  window.__domReady=true;
+  if(window.__fbReady)startApp();
+});
 setInterval(()=>{saveLocal();if(fbEnabled)saveToFirebase();},60000);
 
 async function saveSettings(){
