@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorldMind — AI 세계관 마인드맵</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getDatabase, ref, onValue, set, get } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+window.__FB = { initializeApp, getDatabase, ref, onValue, set, get };
+window.dispatchEvent(new Event('fb-ready'));
+</script>
+<style>
+:root{
+  --bg:#0a0b0f;--bg2:#10121a;--bg3:#161824;
+  --surface:#1c1f2e;--surface2:#242740;
+  --border:#2e3250;--border2:#3d4270;
+  --accent:#7c6af7;--accent2:#a594ff;
+  --gold:#d4a947;--gold2:#f0c96a;
+  --text:#e8eaf6;--text2:#9da3c8;--text3:#5a607a;
+  --danger:#e05c7a;--ok:#4ade9e;
+  --shadow:0 8px 32px rgba(0,0,0,.6);
+  --c-world:#9b59d6;--c-world-bg:rgba(74,32,96,.65);
+  --c-group:#4a9edd;--c-group-bg:rgba(26,58,92,.65);
+  --c-space:#3ecfb8;--c-space-bg:rgba(20,70,65,.65);
+  --c-char:#6bbd4a; --c-char-bg:rgba(42,64,32,.65);
+  --c-item:#e8b84b; --c-item-bg:rgba(70,55,10,.65);
+  --c-trait:#d4914a;--c-trait-bg:rgba(74,48,16,.65);
+  --c-custom:#5a6090;--c-custom-bg:rgba(30,32,53,.65);
+  --rp-w:320px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-serif;overflow:hidden;height:100vh;width:100vw}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 60% 40% at 20% 20%,rgba(124,106,247,.07) 0%,transparent 70%),radial-gradient(ellipse 40% 30% at 80% 80%,rgba(74,222,158,.05) 0%,transparent 60%)}
+
+/* ── TAB BAR ── */
+#tab-bar{position:fixed;top:0;left:0;right:0;height:36px;background:#08090e;border-bottom:1px solid var(--border);display:flex;align-items:flex-end;padding:0 8px;z-index:1001;gap:2px}
+.tab-item{height:30px;padding:0 14px;border-radius:6px 6px 0 0;background:var(--bg2);border:1px solid var(--border);border-bottom:none;font-size:12px;color:var(--text3);cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;max-width:160px;white-space:nowrap;overflow:hidden}
+.tab-item:hover{background:var(--surface);color:var(--text2)}
+.tab-item.active{background:var(--bg3);color:var(--text);border-color:var(--border2);border-bottom:1px solid var(--bg3);margin-bottom:-1px;z-index:2}
+.tab-close{opacity:0;font-size:12px;line-height:1;padding:1px 3px;border-radius:3px;transition:opacity .15s,background .15s}
+.tab-item:hover .tab-close,.tab-item.active .tab-close{opacity:.5}
+.tab-close:hover{opacity:1!important;background:rgba(224,92,122,.25);color:var(--danger)}
+#tab-add{width:28px;height:28px;border-radius:6px;background:transparent;border:1px solid var(--border);color:var(--text3);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-bottom:2px;transition:all .15s;flex-shrink:0}
+#tab-add:hover{background:var(--surface);color:var(--text);border-color:var(--border2)}
+
+/* ── TOP BAR ── */
+#topbar{position:fixed;top:36px;left:0;right:0;height:48px;background:linear-gradient(180deg,#0d0e18 0%,rgba(13,14,24,.9) 100%);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 14px;z-index:1000;backdrop-filter:blur(12px)}
+.logo{font-family:'Cinzel',serif;font-size:17px;font-weight:700;background:linear-gradient(135deg,var(--gold),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:2px;margin-right:6px}
+.tb-sep{width:1px;height:22px;background:var(--border)}
+#project-title-input{background:transparent;border:none;outline:none;color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:13px;font-weight:500;width:180px}
+#project-title-input::placeholder{color:var(--text3)}
+.tb-btn{height:30px;padding:0 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text2);font-family:'Noto Sans KR',sans-serif;font-size:12px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.tb-btn:hover{background:var(--surface2);color:var(--text);border-color:var(--border2)}
+.tb-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.tb-btn.primary:hover{background:var(--accent2)}
+.tb-btn.active-panel{border-color:var(--accent);color:var(--accent2)}
+#tb-spacer{flex:1}
+#edit-badge{font-size:11px;padding:3px 10px;border-radius:10px;background:rgba(74,222,158,.15);border:1px solid var(--ok);color:var(--ok)}
+#readonly-badge{font-size:11px;padding:3px 10px;border-radius:10px;background:rgba(224,92,122,.1);border:1px solid var(--danger);color:var(--danger);cursor:pointer}
+#readonly-badge:hover{background:rgba(224,92,122,.2)}
+
+/* ── CANVAS ── */
+#canvas-wrap{position:fixed;top:84px;left:0;right:var(--rp-w);bottom:0;overflow:hidden;cursor:grab;transition:right .25s}
+#canvas-wrap.no-panel{right:0}
+#canvas-wrap.grabbing{cursor:grabbing}
+#canvas-wrap.linking{cursor:crosshair}
+#canvas{position:absolute;top:0;left:0;width:4000px;height:4000px;transform-origin:0 0}
+#svg-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+
+/* ── RIGHT PANEL ── */
+#right-panel{position:fixed;top:84px;right:0;width:var(--rp-w);bottom:0;background:var(--bg3);border-left:1px solid var(--border);z-index:500;display:none;flex-direction:column}
+#right-panel.visible{display:flex}
+.rp-header{padding:14px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.rp-title{font-size:13px;font-weight:700;color:var(--text2);letter-spacing:.5px}
+.rp-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;transition:color .15s}
+.rp-close:hover{color:var(--text)}
+.rp-body{flex:1;overflow-y:auto;padding:14px 16px}
+
+/* ── LINK BANNER ── */
+#link-banner{position:fixed;top:94px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,rgba(124,106,247,.92),rgba(74,222,158,.75));border:1px solid var(--accent2);border-radius:10px;padding:7px 20px;font-size:13px;color:#fff;z-index:1300;display:none;backdrop-filter:blur(8px);pointer-events:none;box-shadow:0 4px 20px rgba(124,106,247,.4)}
+#link-banner.visible{display:block}
+
+/* ── NODES ── */
+.node{position:absolute;border-radius:12px;padding:10px 14px;min-width:120px;max-width:220px;cursor:pointer;user-select:none;border:1.5px solid;transition:transform .15s,box-shadow .15s;backdrop-filter:blur(4px);z-index:10}
+.node:hover{transform:scale(1.04)}
+.node.link-target-hover{transform:scale(1.06);box-shadow:0 0 0 3px var(--c-space),0 8px 32px rgba(62,207,184,.35)!important}
+.node.type-world{background:var(--c-world-bg);border-color:var(--c-world)}
+.node.type-group{background:var(--c-group-bg);border-color:var(--c-group)}
+.node.type-space{background:var(--c-space-bg);border-color:var(--c-space)}
+.node.type-char{background:var(--c-char-bg);border-color:var(--c-char)}
+.node.type-item{background:var(--c-item-bg);border-color:var(--c-item)}
+.node.type-trait{background:var(--c-trait-bg);border-color:var(--c-trait)}
+.node.type-custom{background:var(--c-custom-bg);border-color:var(--c-custom)}
+.node.selected{box-shadow:0 0 0 2px var(--accent),0 8px 32px rgba(124,106,247,.4)}
+.node-type-badge{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;opacity:.65;margin-bottom:4px}
+.type-world .node-type-badge{color:var(--c-world)}.type-group .node-type-badge{color:var(--c-group)}
+.type-space .node-type-badge{color:var(--c-space)}.type-char .node-type-badge{color:var(--c-char)}
+.type-item .node-type-badge{color:var(--c-item)}.type-trait .node-type-badge{color:var(--c-trait)}
+.type-custom .node-type-badge{color:var(--c-custom)}
+.node-name{font-size:13px;font-weight:700;color:var(--text);line-height:1.3}
+.node-desc{font-size:11px;color:var(--text2);margin-top:6px;line-height:1.5;display:none;border-top:1px solid rgba(255,255,255,.08);padding-top:6px}
+.node-desc.visible{display:block}
+.node.readonly-mode{pointer-events:auto} /* still show but edit blocked */
+
+/* ── SVG EDGES ── */
+.edge-path{stroke-width:1.8;fill:none;opacity:.55;cursor:pointer;pointer-events:stroke;transition:opacity .2s,stroke-width .2s}
+.edge-path:hover,.edge-path.sel{opacity:1;stroke-width:2.8}
+.edge-hit{stroke-width:16;fill:none;opacity:0;cursor:pointer;pointer-events:stroke}
+.edge-label-text{font-family:'Noto Sans KR',sans-serif;font-size:10px;fill:var(--text2);text-anchor:middle;dominant-baseline:middle;pointer-events:none}
+.edge-label-text.sel{fill:var(--text)}
+.edge-detail-text{font-family:'Noto Sans KR',sans-serif;font-size:10px;fill:var(--text2);text-anchor:middle;dominant-baseline:middle;pointer-events:none}
+.ec-world{stroke:var(--c-world)}.ec-group{stroke:var(--c-group)}.ec-space{stroke:var(--c-space)}
+.ec-char{stroke:var(--c-char)}.ec-item{stroke:var(--c-item)}.ec-trait{stroke:var(--c-trait)}.ec-custom{stroke:var(--c-custom)}
+
+/* ── CTX MENUS ── */
+.ctx-menu{position:fixed;z-index:2500;background:var(--bg3);border:1px solid var(--border2);border-radius:10px;padding:6px;min-width:190px;box-shadow:var(--shadow);display:none}
+.ctx-menu.visible{display:block}
+.ctx-item{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text2);transition:all .15s}
+.ctx-item:hover{background:var(--surface2);color:var(--text)}
+.ctx-item.danger:hover{background:rgba(224,92,122,.15);color:var(--danger)}
+.ctx-item.disabled{opacity:.35;pointer-events:none}
+.ctx-item .icon{font-size:15px;width:18px;text-align:center}
+.ctx-sep{height:1px;background:var(--border);margin:4px 0}
+
+/* ── MODALS ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:3000;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-overlay.hidden{display:none}
+.modal{background:var(--bg3);border:1px solid var(--border2);border-radius:16px;padding:28px;width:480px;max-width:95vw;box-shadow:0 24px 80px rgba(0,0,0,.8);max-height:90vh;overflow-y:auto}
+.modal h2{font-family:'Cinzel',serif;font-size:19px;color:var(--gold2);margin-bottom:8px}
+.modal p{font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.6}
+.modal input,.modal textarea,.modal select{width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:9px 13px;color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:13px;outline:none;transition:border-color .2s;margin-bottom:10px}
+.modal input:focus,.modal textarea:focus,.modal select:focus{border-color:var(--accent)}
+.modal textarea{resize:vertical;min-height:70px}
+.modal label{font-size:11px;color:var(--text3);display:block;margin-bottom:5px}
+.modal select option{background:var(--bg3)}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+.btn{padding:8px 18px;border-radius:8px;border:none;cursor:pointer;font-family:'Noto Sans KR',sans-serif;font-size:13px;transition:all .2s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent2)}
+.btn-ghost{background:transparent;border:1px solid var(--border2);color:var(--text2)}.btn-ghost:hover{background:var(--surface);color:var(--text)}
+.btn-ok{background:rgba(74,222,158,.15);border:1px solid var(--ok);color:var(--ok)}.btn-ok:hover{background:rgba(74,222,158,.25)}
+.btn-danger{background:rgba(224,92,122,.15);border:1px solid var(--danger);color:var(--danger)}.btn-danger:hover{background:rgba(224,92,122,.25)}
+
+/* ── ADD PANEL ── */
+#add-panel{position:fixed;right:calc(var(--rp-w) + 8px);top:94px;z-index:1100;background:var(--bg3);border:1px solid var(--border2);border-radius:14px;padding:14px;width:250px;box-shadow:var(--shadow);display:none}
+#add-panel.visible{display:block}
+#add-panel.no-panel{right:8px}
+#add-panel h3{font-size:13px;color:var(--text2);margin-bottom:10px}
+#add-panel input,#add-panel textarea,#add-panel select{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:7px 9px;color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:12px;outline:none;margin-bottom:7px;transition:border-color .2s}
+#add-panel input:focus,#add-panel textarea:focus,#add-panel select:focus{border-color:var(--accent)}
+#add-panel textarea{resize:vertical;min-height:55px}
+#add-panel select option{background:var(--bg3)}
+#add-panel .panel-btns{display:flex;gap:6px;margin-top:4px}
+
+/* ── SUGGESTION PANEL ── */
+#sug-panel{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:1200;background:var(--bg3);border:1px solid var(--border2);border-radius:16px;padding:14px 18px;width:660px;max-width:95vw;box-shadow:0 16px 60px rgba(0,0,0,.7);display:none;backdrop-filter:blur(16px)}
+#sug-panel.visible{display:block}
+.ph{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.pt{font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase}
+.pc{background:none;border:none;color:var(--text3);cursor:pointer;font-size:17px;line-height:1;padding:0 4px;transition:color .15s}.pc:hover{color:var(--text)}
+.sug-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.sug-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px;cursor:pointer;transition:all .2s;position:relative}
+.sug-card:hover{border-color:var(--accent);background:var(--surface2);transform:translateY(-2px)}
+.s-tag{display:inline-block;font-size:9px;padding:2px 6px;border-radius:4px;margin-bottom:5px;font-weight:700;letter-spacing:.8px}
+.s-name{font-size:13px;font-weight:700;color:var(--text);margin-bottom:5px}
+.s-desc{font-size:11px;color:var(--text2);line-height:1.5}
+.s-apply{position:absolute;top:7px;right:7px;background:var(--accent);color:#fff;border:none;border-radius:4px;font-size:10px;padding:2px 7px;cursor:pointer;opacity:0;transition:opacity .15s}
+.sug-card:hover .s-apply{opacity:1}
+.pf{display:flex;align-items:center;gap:10px;margin-top:10px}
+.pml{font-size:11px;color:var(--text3)}
+.pr{background:none;border:1px solid var(--border);color:var(--text2);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:'Noto Sans KR',sans-serif;transition:all .15s}.pr:hover{border-color:var(--accent2);color:var(--accent2)}
+
+/* ── LOADING ── */
+.ld{display:inline-flex;gap:5px;align-items:center}
+.ld span{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:db .9s infinite}
+.ld span:nth-child(2){animation-delay:.15s}.ld span:nth-child(3){animation-delay:.3s}
+@keyframes db{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+
+/* ── ZOOM ── */
+#zoom-ctrl{position:fixed;bottom:16px;right:calc(var(--rp-w) + 10px);display:flex;flex-direction:column;gap:4px;z-index:1000;transition:right .25s}
+#zoom-ctrl.no-panel{right:10px}
+.zoom-btn{width:34px;height:34px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.zoom-btn:hover{background:var(--surface2);color:var(--text)}
+
+/* ── TOAST ── */
+#toast{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:7px 16px;font-size:13px;color:var(--text);z-index:4000;opacity:0;transition:opacity .3s;pointer-events:none}
+#toast.show{opacity:1}
+
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ── CHAT PANEL ── */
+#chat-wrap{display:flex;flex-direction:column;height:100%}
+#chat-msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-bottom:8px}
+.cm{padding:9px 12px;border-radius:10px;font-size:12px;line-height:1.6;max-width:90%}
+.cm.user{background:var(--accent);color:#fff;align-self:flex-end;border-radius:10px 10px 2px 10px}
+.cm.ai{background:var(--surface2);color:var(--text);align-self:flex-start;border-radius:10px 10px 10px 2px}
+#chat-input-row{display:flex;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+#chat-input{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:12px;outline:none;resize:none;height:60px}
+#chat-input:focus{border-color:var(--accent)}
+#chat-send{background:var(--accent);border:none;border-radius:8px;color:#fff;padding:0 12px;cursor:pointer;font-size:16px;transition:background .15s}
+#chat-send:hover{background:var(--accent2)}
+
+/* ── EVENTS PANEL ── */
+#events-wrap{display:flex;flex-direction:column;height:100%}
+#events-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding-bottom:8px}
+.event-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;position:relative;font-size:12px}
+.event-card .ev-time{font-size:10px;color:var(--accent2);margin-bottom:4px;font-weight:700}
+.event-card .ev-body{color:var(--text);line-height:1.6}
+.event-card .ev-del{position:absolute;top:7px;right:8px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;line-height:1;transition:color .15s}.event-card .ev-del:hover{color:var(--danger)}
+#events-gen-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:8px;color:#fff;padding:8px 14px;font-family:'Noto Sans KR',sans-serif;font-size:12px;cursor:pointer;transition:opacity .15s;margin-bottom:10px}
+#events-gen-btn:hover{opacity:.85}
+
+/* ── WORLD PANEL ── */
+#world-wrap{display:flex;flex-direction:column;gap:10px}
+#world-wrap textarea{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:12px;outline:none;resize:vertical;min-height:100px;transition:border-color .2s}
+#world-wrap textarea:focus{border-color:var(--accent)}
+.ref-img-row{display:flex;gap:8px;flex-wrap:wrap}
+.ref-img-box{width:80px;height:80px;border:1.5px dashed var(--border2);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;position:relative;transition:border-color .15s}
+.ref-img-box:hover{border-color:var(--accent)}
+.ref-img-box img{width:100%;height:100%;object-fit:cover;display:none}
+.ref-img-box .plus{font-size:22px;color:var(--text3)}
+.ref-img-box .del-img{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);border:none;border-radius:50%;width:18px;height:18px;color:#fff;font-size:11px;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1}
+.ref-img-box:hover .del-img{display:flex}
+
+/* ── PROTAGONIST PANEL ── */
+#protagonist-panel{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:3500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+#protagonist-panel.visible{display:flex}
+#protagonist-inner{background:var(--bg3);border:1px solid var(--border2);border-radius:16px;padding:24px;width:520px;max-width:95vw;max-height:88vh;overflow-y:auto;box-shadow:0 24px 80px rgba(0,0,0,.8)}
+#protagonist-inner h3{font-family:'Cinzel',serif;font-size:17px;color:var(--gold2);margin-bottom:14px}
+#protagonist-story{font-size:13px;color:var(--text);line-height:1.8;min-height:80px;white-space:pre-wrap}
+#protagonist-img-wrap{margin-top:12px;display:none}
+#protagonist-img-wrap img{width:100%;border-radius:8px;border:1px solid var(--border2)}
+.prog-btns{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+
+/* ── FB STATUS ── */
+#fb-status{font-size:11px;color:var(--text3);display:flex;align-items:center;gap:5px}
+#fb-dot{width:7px;height:7px;border-radius:50%;background:var(--text3)}
+#fb-dot.ok{background:var(--ok)}
+#fb-dot.err{background:var(--danger)}
+</style>
+</head>
+<body>
+
+<!-- TAB BAR -->
+<div id="tab-bar">
+  <div id="tabs-container" style="display:flex;gap:2px;align-items:flex-end;flex:1;overflow-x:auto"></div>
+  <button id="tab-add" onclick="addTab()" title="새 프로젝트">＋</button>
+</div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="logo">WorldMind</div>
+  <div class="tb-sep"></div>
+  <input id="project-title-input" placeholder="프로젝트 이름…" value="새 세계관"/>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="openAddPanel()">＋ 노드</button>
+  <div id="fb-status"><div id="fb-dot"></div><span id="fb-txt">연결 중…</span></div>
+  <div id="tb-spacer"></div>
+  <div id="readonly-badge" onclick="openLoginModal()" title="클릭하여 편집 모드 전환">🔒 보기 전용</div>
+  <div id="edit-badge" style="display:none">✏️ 편집 중</div>
+  <div class="tb-sep"></div>
+  <!-- right panel toggles -->
+  <button class="tb-btn" id="btn-world" onclick="togglePanel('world')" title="세계관 설정">🌐 세계관</button>
+  <button class="tb-btn" id="btn-chat"  onclick="togglePanel('chat')"  title="대화창">💬 대화</button>
+  <button class="tb-btn" id="btn-events" onclick="togglePanel('events')" title="사건">📜 사건</button>
+  <div class="tb-sep"></div>
+  <button class="tb-btn" onclick="openSettingsModal()">⚙ 설정</button>
+  <button class="tb-btn" onclick="exportData()">내보내기</button>
+</div>
+
+<!-- CANVAS -->
+<div id="canvas-wrap">
+  <div id="canvas">
+    <svg id="svg-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+</div>
+
+<!-- RIGHT PANEL -->
+<div id="right-panel">
+  <div class="rp-header">
+    <span class="rp-title" id="rp-title">패널</span>
+    <button class="rp-close" onclick="closePanel()">✕</button>
+  </div>
+  <div class="rp-body" id="rp-body"></div>
+</div>
+
+<!-- LINK BANNER -->
+<div id="link-banner">🔗 연결할 노드를 클릭하세요 &nbsp;·&nbsp; ESC로 취소</div>
+
+<!-- NODE CTX -->
+<div id="node-ctx" class="ctx-menu">
+  <div class="ctx-item" onclick="ctxEditNode()"><span class="icon">✏️</span> 노드 편집</div>
+  <div class="ctx-item" id="ctx-link-btn" onclick="ctxStartLink()"><span class="icon">🔗</span> 관계 추가</div>
+  <div class="ctx-item" id="ctx-visit-btn" onclick="ctxVisit()"><span class="icon">🧭</span> 주인공 방문</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" id="ctx-sug-cur" onclick="ctxSuggestCurrent()"><span class="icon">✨</span> 현재 노드 추천</div>
+  <div class="ctx-item" id="ctx-sug-child" onclick="ctxSuggestChild()"><span class="icon">🌿</span> 하위 노드 AI 추천</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" id="ctx-del-node" onclick="ctxDeleteNode()"><span class="icon">🗑</span> 삭제</div>
+</div>
+
+<!-- EDGE CTX -->
+<div id="edge-ctx" class="ctx-menu">
+  <div class="ctx-item" onclick="ctxEditEdge()"><span class="icon">✏️</span> 관계 편집</div>
+  <div class="ctx-item" onclick="ctxSuggestEdge()"><span class="icon">✨</span> 관계 AI 추천</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" onclick="ctxDeleteEdge()"><span class="icon">🗑</span> 삭제</div>
+</div>
+
+<!-- SUGGESTION PANEL -->
+<div id="sug-panel">
+  <div class="ph"><span class="pt" id="sug-label">AI 추천</span><button class="pc" onclick="closeSug()">✕</button></div>
+  <div id="sug-cards" class="sug-cards">
+    <div class="sug-card" style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;min-height:70px"><div class="ld"><span></span><span></span><span></span></div></div>
+  </div>
+  <div class="pf"><span class="pml" id="sug-mode"></span><div style="flex:1"></div><button class="pr" onclick="refreshSug()">↻ 다시 추천</button></div>
+</div>
+
+<!-- ADD NODE PANEL -->
+<div id="add-panel">
+  <h3>＋ 새 노드</h3>
+  <label style="font-size:11px;color:var(--text3);margin-bottom:3px;display:block">유형</label>
+  <select id="np-type">
+    <option value="world">🌍 세계</option><option value="group">👥 집단</option>
+    <option value="space">🗺 공간</option><option value="char">👤 인물</option>
+    <option value="item">⚔️ 사물</option><option value="trait">💎 성격</option>
+    <option value="custom">📌 기타</option>
+  </select>
+  <input id="np-name" placeholder="이름"/>
+  <textarea id="np-desc" placeholder="세부 설명 (선택)"></textarea>
+  <label style="font-size:11px;color:var(--text3);margin-bottom:3px;display:block">부모 노드</label>
+  <select id="np-parent"><option value="">없음 (최상위)</option></select>
+  <div class="panel-btns">
+    <button class="btn btn-primary" style="flex:1;font-size:12px" onclick="addNodeFromPanel()">추가</button>
+    <button class="btn btn-ghost" style="font-size:12px" onclick="closeAddPanel()">취소</button>
+  </div>
+</div>
+
+<!-- EDIT NODE MODAL -->
+<div id="edit-node-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>노드 편집</h2>
+    <label>유형</label>
+    <select id="en-type">
+      <option value="world">🌍 세계</option><option value="group">👥 집단</option>
+      <option value="space">🗺 공간</option><option value="char">👤 인물</option>
+      <option value="item">⚔️ 사물</option><option value="trait">💎 성격</option><option value="custom">📌 기타</option>
+    </select>
+    <label>이름</label><input id="en-name"/>
+    <label>세부 설명</label><textarea id="en-desc" style="min-height:90px"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeEditNodeModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveEditNodeModal()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT EDGE MODAL -->
+<div id="edit-edge-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>관계 편집</h2>
+    <label>관계 레이블 <span style="color:var(--text3);font-size:11px">(선 위 짧은 이름)</span></label>
+    <input id="ee-label" placeholder="예: 친구, 라이벌, 소속…"/>
+    <label>관계 세부 설명</label>
+    <textarea id="ee-desc" style="min-height:80px" placeholder="관계를 자세히 설명하세요"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeEditEdgeModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveEditEdgeModal()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOGIN MODAL -->
+<div id="login-modal" class="modal-overlay hidden">
+  <div class="modal" style="width:360px">
+    <h2>🔑 편집 모드</h2>
+    <p>마스터 코드를 입력하면 편집이 가능합니다.</p>
+    <label>마스터 코드</label>
+    <input id="login-code-input" type="password" placeholder="코드 입력…" onkeydown="if(event.key==='Enter')doLogin()"/>
+    <div id="login-err" style="font-size:12px;color:var(--danger);margin-bottom:8px;display:none">코드가 올바르지 않습니다.</div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeLoginModal()">취소</button>
+      <button class="btn btn-primary" onclick="doLogin()">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div id="settings-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>⚙ 설정</h2>
+    <label>Anthropic API Key</label>
+    <input id="api-key-input" type="password" placeholder="sk-ant-…"/>
+    <label>Google Gemini API Key <span style="color:var(--text3);font-size:10px">(이미지 생성용)</span></label>
+    <input id="google-api-input" type="password" placeholder="AIza…"/>
+    <div class="tb-sep" style="margin:12px 0;width:100%;height:1px"></div>
+    <label>Firebase 설정 <span style="color:var(--text3);font-size:10px">(실시간 공유 — JSON 붙여넣기)</span></label>
+    <textarea id="firebase-cfg-input" style="min-height:90px;font-size:11px;font-family:monospace" placeholder='{"apiKey":"…","databaseURL":"https://…-default-rtdb.firebaseio.com","projectId":"…"}'></textarea>
+    <label>마스터 코드 <span style="color:var(--text3);font-size:10px">(편집 잠금 비밀번호)</span></label>
+    <input id="master-code-input" type="password" placeholder="새 마스터 코드 설정"/>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeSettingsModal()">취소</button>
+      <button class="btn btn-primary" onclick="saveSettings()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROTAGONIST PANEL -->
+<div id="protagonist-panel">
+  <div id="protagonist-inner">
+    <h3>🧭 주인공 방문</h3>
+    <div id="protagonist-node-name" style="font-size:12px;color:var(--text3);margin-bottom:12px"></div>
+    <div id="protagonist-story"><div class="ld"><span></span><span></span><span></span></div></div>
+    <div id="protagonist-img-wrap"><img id="protagonist-img" src=""/></div>
+    <div class="prog-btns">
+      <button class="btn btn-ghost" onclick="protagonistRegen()" style="font-size:12px">↻ 다시 추천</button>
+      <button class="btn btn-primary" onclick="protagonistGenImg()" style="font-size:12px" id="btn-gen-img">🎨 이미지 생성</button>
+      <button class="btn btn-ok" onclick="protagonistSaveEvent()" style="font-size:12px">📜 사건 저장</button>
+      <button class="btn btn-ghost" onclick="closeProtagonist()" style="font-size:12px">닫기</button>
+    </div>
+  </div>
+</div>
+
+<!-- ZOOM -->
+<div id="zoom-ctrl">
+  <button class="zoom-btn" onclick="zoomIn()">＋</button>
+  <button class="zoom-btn" onclick="zoomOut()">－</button>
+  <button class="zoom-btn" onclick="zoomFit()" style="font-size:13px">⊡</button>
+</div>
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════
+// CONSTANTS
+// ══════════════════════════════════════════════════
+const TL={world:'세계',group:'집단',space:'공간',char:'인물',item:'사물',trait:'성격',custom:'기타'};
+const TI={world:'🌍',group:'👥',space:'🗺',char:'👤',item:'⚔️',trait:'💎',custom:'📌'};
+const TC={world:'#9b59d6',group:'#4a9edd',space:'#3ecfb8',char:'#6bbd4a',item:'#e8b84b',trait:'#d4914a',custom:'#5a6090'};
+
+// ══════════════════════════════════════════════════
+// APP STATE
+// ══════════════════════════════════════════════════
+let tabs=[];           // [{id,title,nodes,edges,events,worldPrompt,refImages}]
+let activeTabId=null;
+let isEditMode=false;
+let fbApp=null, fbDb=null, fbRef=null, fbUnsub=null;
+let fbEnabled=false;
+let remoteLock=false;  // prevent echo from own writes
+
+let scale=1,panX=0,panY=0;
+let isPanning=false,lastMX=0,lastMY=0;
+let selNodeId=null,selEdgeId=null;
+let ctxNodeId=null,ctxEdgeId=null;
+let sugMode=null,sugNodeId=null,sugEdgeId=null;
+let linkMode=false,linkSrcId=null;
+let activePanel=null; // 'world'|'chat'|'events'
+let protagonistNodeId=null, protagonistStory='';
+
+let idC=Date.now();
+const gid=()=>'i'+(idC++);
+
+// ══════════════════════════════════════════════════
+// TAB HELPERS
+// ══════════════════════════════════════════════════
+function tab(){return tabs.find(t=>t.id===activeTabId)||tabs[0];}
+function nodes(){return tab()?tab().nodes:[];}
+function edges(){return tab()?tab().edges:[];}
+function events(){return tab()?tab().events:[];}
+function byId(id){return nodes().find(n=>n.id===id);}
+function edgeById(id){return edges().find(e=>e.id===id);}
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+function init(){
+  loadLocal();
+  if(!tabs.length)createTab('새 세계관');
+  switchTab(tabs[0].id);
+  setupPan();setupWheel();
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){cancelLink();closeSug();}});
+  updateEditUI();
+  initFirebase();
+  setTimeout(zoomFit,120);
+}
+
+// ══════════════════════════════════════════════════
+// TABS
+// ══════════════════════════════════════════════════
+function createTab(title){
+  const t={id:gid(),title:title||'새 세계관',nodes:[],edges:[],events:[],worldPrompt:'',refImages:[]};
+  tabs.push(t);
+  const node={id:gid(),type:'world',name:t.title,desc:'이 세계관의 배경입니다.',x:1900,y:1900};
+  t.nodes.push(node);
+  renderTabBar();
+  return t;
+}
+
+function addTab(){
+  const t=createTab('새 세계관 '+(tabs.length+1));
+  switchTab(t.id);
+  saveToFirebase();
+}
+
+function switchTab(id){
+  activeTabId=id;
+  const t=tab();
+  document.getElementById('project-title-input').value=t.title;
+  renderTabBar();
+  renderAll();
+  setTimeout(zoomFit,80);
+}
+
+function closeTab(id,ev){
+  if(ev)ev.stopPropagation();
+  if(tabs.length<=1){showToast('마지막 탭은 삭제할 수 없습니다');return;}
+  tabs=tabs.filter(t=>t.id!==id);
+  if(activeTabId===id)switchTab(tabs[0].id);
+  else{renderTabBar();renderAll();}
+  saveToFirebase();
+}
+
+function renderTabBar(){
+  const c=document.getElementById('tabs-container');
+  c.innerHTML='';
+  tabs.forEach(t=>{
+    const el=document.createElement('div');
+    el.className='tab-item'+(t.id===activeTabId?' active':'');
+    el.innerHTML=`<span style="overflow:hidden;text-overflow:ellipsis;flex:1">${esc(t.title)}</span><span class="tab-close" onclick="closeTab('${t.id}',event)">✕</span>`;
+    el.onclick=()=>switchTab(t.id);
+    c.appendChild(el);
+  });
+}
+
+// title sync
+document.addEventListener('DOMContentLoaded',()=>{
+  const ti=document.getElementById('project-title-input');
+  if(ti)ti.addEventListener('input',()=>{if(tab())tab().title=ti.value;renderTabBar();saveToFirebase();});
+});
+
+// ══════════════════════════════════════════════════
+// FIREBASE
+// ══════════════════════════════════════════════════
+async function initFirebase(){
+  const cfgStr=localStorage.getItem('wm_fbcfg');
+  if(!cfgStr)return setFbStatus('disconnected');
+  let cfg;
+  try{cfg=JSON.parse(cfgStr);}catch(e){return setFbStatus('error');}
+  if(!cfg.databaseURL)return setFbStatus('error');
+
+  await new Promise(r=>{
+    if(window.__FB){r();}else{window.addEventListener('fb-ready',r,{once:true});}
+  });
+  const {initializeApp,getDatabase,ref,onValue,set}=window.__FB;
+  try{
+    fbApp=initializeApp(cfg,'worldmind');
+    fbDb=getDatabase(fbApp);
+    fbRef=ref(fbDb,'worldmind');
+    fbEnabled=true;
+    setFbStatus('ok');
+    // listen for remote changes
+    onValue(fbRef,snap=>{
+      if(remoteLock)return;
+      const data=snap.val();
+      if(!data)return;
+      mergeRemote(data);
+    });
+  }catch(e){setFbStatus('error');console.error(e);}
+}
+
+function setFbStatus(s){
+  const dot=document.getElementById('fb-dot'),txt=document.getElementById('fb-txt');
+  if(s==='ok'){dot.className='ok';txt.textContent='동기화됨';}
+  else if(s==='error'){dot.className='err';txt.textContent='연결 오류';}
+  else if(s==='disconnected'){dot.className='';txt.textContent='오프라인';}
+  else{dot.className='';txt.textContent='연결 중…';}
+}
+
+function mergeRemote(data){
+  if(data.tabs){tabs=data.tabs;renderTabBar();}
+  if(data.tabs&&!tabs.find(t=>t.id===activeTabId)){
+    activeTabId=tabs[0]?.id;
+    if(activeTabId)document.getElementById('project-title-input').value=tab().title;
+  }
+  renderAll();
+}
+
+function saveToFirebase(){
+  if(!fbEnabled||!fbRef)return;
+  remoteLock=true;
+  const {set}=window.__FB;
+  set(fbRef,{tabs}).then(()=>{
+    setTimeout(()=>remoteLock=false,500);
+    setFbStatus('ok');
+  }).catch(e=>{remoteLock=false;setFbStatus('error');});
+}
+
+// ══════════════════════════════════════════════════
+// PERSISTENCE (localStorage fallback)
+// ══════════════════════════════════════════════════
+function cfg(){return{apiKey:localStorage.getItem('wm_k')||'',googleKey:localStorage.getItem('wm_gk')||'',masterCode:localStorage.getItem('wm_mc')||'worldmind'};}
+function saveLocal(){localStorage.setItem('wm_tabs',JSON.stringify(tabs));}
+function loadLocal(){
+  try{const t=localStorage.getItem('wm_tabs');if(t)tabs=JSON.parse(t);}catch(e){}
+}
+
+// ══════════════════════════════════════════════════
+// EDIT MODE
+// ══════════════════════════════════════════════════
+function openLoginModal(){document.getElementById('login-modal').classList.remove('hidden');setTimeout(()=>document.getElementById('login-code-input').focus(),50);}
+function closeLoginModal(){document.getElementById('login-modal').classList.add('hidden');document.getElementById('login-err').style.display='none';document.getElementById('login-code-input').value='';}
+function doLogin(){
+  const code=document.getElementById('login-code-input').value;
+  const mc=cfg().masterCode;
+  if(code===mc){isEditMode=true;updateEditUI();closeLoginModal();showToast('편집 모드가 활성화되었습니다 ✓');}
+  else{document.getElementById('login-err').style.display='block';}
+}
+function updateEditUI(){
+  document.getElementById('readonly-badge').style.display=isEditMode?'none':'block';
+  document.getElementById('edit-badge').style.display=isEditMode?'block':'none';
+  // toggle edit-only ctx items
+  ['ctx-link-btn','ctx-sug-cur','ctx-sug-child','ctx-del-node'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.classList.toggle('disabled',!isEditMode);
+  });
+}
+
+// ══════════════════════════════════════════════════
+// NODE CRUD
+// ══════════════════════════════════════════════════
+function addNode({type,name,desc,x,y,parentId}){
+  if(!isEditMode){showToast('편집 모드에서만 가능합니다');return null;}
+  const id=gid();
+  tab().nodes.push({id,type:type||'custom',name:name||'새 노드',desc:desc||'',x:x||2000,y:y||2000});
+  if(parentId)tab().edges.push({id:gid(),from:parentId,to:id,label:'',desc:'',isParent:true});
+  renderAll();persist();return id;
+}
+function deleteNode(id){
+  if(!isEditMode)return;
+  const t=tab();t.nodes=t.nodes.filter(n=>n.id!==id);t.edges=t.edges.filter(e=>e.from!==id&&e.to!==id);
+  renderAll();persist();
+}
+function addEdge(a,b){
+  if(!isEditMode)return;
+  if(tab().edges.find(e=>(e.from===a&&e.to===b)||(e.from===b&&e.to===a))){showToast('이미 연결된 노드입니다');return;}
+  const edge={id:gid(),from:a,to:b,label:'',desc:'',isParent:false};
+  tab().edges.push(edge);renderAll();
+  ctxEdgeId=edge.id;setTimeout(openEditEdgeModal,80);
+}
+function deleteEdge(id){
+  if(!isEditMode)return;
+  tab().edges=tab().edges.filter(e=>e.id!==id);selEdgeId=null;renderAll();persist();
+}
+
+function persist(){saveLocal();saveToFirebase();}
+
+// ══════════════════════════════════════════════════
+// CONTEXT BUILDERS
+// ══════════════════════════════════════════════════
+function nodeCtx(){return nodes().map(n=>`[${TL[n.type]}]${n.name}${n.desc?' : '+n.desc:''}`).join('\n');}
+function edgeCtx(){return edges().map(e=>{const f=byId(e.from),t=byId(e.to);if(!f||!t)return'';return`${f.name}→${t.name}${e.label?'('+e.label+')':''}${e.desc?':'+e.desc:''}`;}).filter(Boolean).join('\n');}
+function eventCtx(){return events().map(e=>`[${e.time||'?'}]${e.body}`).join('\n');}
+
+// ══════════════════════════════════════════════════
+// CENTER HELPER
+// ══════════════════════════════════════════════════
+function center(node){
+  const el=document.getElementById('node-'+node.id);
+  return{x:node.x+(el?el.offsetWidth:140)/2,y:node.y+(el?el.offsetHeight:50)/2};
+}
+
+// ══════════════════════════════════════════════════
+// RENDER ALL
+// ══════════════════════════════════════════════════
+function renderAll(){renderEdges();renderNodes();}
+
+// ══════════════════════════════════════════════════
+// RENDER EDGES
+// ══════════════════════════════════════════════════
+function renderEdges(){
+  const svg=document.getElementById('svg-layer');svg.innerHTML='';
+  edges().forEach(edge=>{
+    const from=byId(edge.from),to=byId(edge.to);if(!from||!to)return;
+    const fc=center(from),tc=center(to);
+    const mx=(fc.x+tc.x)/2,my=(fc.y+tc.y)/2;
+    const d=`M${fc.x},${fc.y} C${mx},${fc.y} ${mx},${tc.y} ${tc.x},${tc.y}`;
+    const cc=`ec-${from.type||'custom'}`;const isSel=edge.id===selEdgeId;
+
+    const hit=mkSvg('path');hit.setAttribute('d',d);hit.setAttribute('class','edge-hit');hit.dataset.eid=edge.id;svg.appendChild(hit);
+    const path=mkSvg('path');path.setAttribute('d',d);path.setAttribute('class',`edge-path ${cc}${isSel?' sel':''}`);path.setAttribute('stroke-dasharray',edge.isParent?'none':'6 3');path.dataset.eid=edge.id;svg.appendChild(path);
+
+    if(edge.label){
+      const lw=Math.max(edge.label.length*7+16,44),lh=18;
+      const bg=mkSvg('rect');bg.setAttribute('x',mx-lw/2);bg.setAttribute('y',my-lh/2);bg.setAttribute('width',lw);bg.setAttribute('height',lh);bg.setAttribute('rx',5);bg.setAttribute('fill','var(--bg3)');bg.setAttribute('stroke',isSel?'var(--accent)':'var(--border2)');bg.setAttribute('stroke-width',1);bg.style.pointerEvents='none';svg.appendChild(bg);
+      const lt=mkSvg('text');lt.setAttribute('x',mx);lt.setAttribute('y',my);lt.setAttribute('class',`edge-label-text${isSel?' sel':''}`);lt.textContent=edge.label;svg.appendChild(lt);
+    }
+    if(isSel&&edge.desc){
+      const lines=cjkWrap(edge.desc,26);const bw=190,lh2=15,bh=lines.length*lh2+16;const bx=mx-bw/2,by=my+(edge.label?16:8);
+      const dbg=mkSvg('rect');dbg.setAttribute('x',bx);dbg.setAttribute('y',by);dbg.setAttribute('width',bw);dbg.setAttribute('height',bh);dbg.setAttribute('rx',6);dbg.setAttribute('fill','var(--surface)');dbg.setAttribute('stroke','var(--border2)');dbg.setAttribute('stroke-width',1);dbg.style.pointerEvents='none';svg.appendChild(dbg);
+      lines.forEach((ln,i)=>{const dt=mkSvg('text');dt.setAttribute('x',mx);dt.setAttribute('y',by+12+i*lh2);dt.setAttribute('class','edge-detail-text');dt.textContent=ln;svg.appendChild(dt);});
+    }
+    [hit,path].forEach(el=>{
+      el.addEventListener('click',ev=>{ev.stopPropagation();selEdgeId=(selEdgeId===edge.id)?null:edge.id;selNodeId=null;document.querySelectorAll('.node.selected').forEach(n=>n.classList.remove('selected'));hideCtx();renderEdges();});
+      el.addEventListener('contextmenu',ev=>{ev.preventDefault();ev.stopPropagation();ctxEdgeId=edge.id;selEdgeId=edge.id;renderEdges();showCtx('edge-ctx',ev.clientX,ev.clientY);});
+    });
+  });
+}
+function mkSvg(tag){return document.createElementNS('http://www.w3.org/2000/svg',tag);}
+function cjkWrap(text,max){const lines=[];let cur='';for(const c of text){cur+=c;if(cur.length>=max){lines.push(cur);cur='';}}if(cur)lines.push(cur);return lines;}
+
+// ══════════════════════════════════════════════════
+// RENDER NODES
+// ══════════════════════════════════════════════════
+function renderNodes(){
+  const canvas=document.getElementById('canvas');
+  canvas.querySelectorAll('.node').forEach(el=>el.remove());
+  nodes().forEach(node=>{
+    const el=document.createElement('div');
+    el.className=`node type-${node.type}`;el.id='node-'+node.id;
+    el.style.left=node.x+'px';el.style.top=node.y+'px';
+    if(selNodeId===node.id)el.classList.add('selected');
+    el.innerHTML=`<div class="node-type-badge">${TI[node.type]||'📌'} ${TL[node.type]}</div><div class="node-name">${esc(node.name)}</div><div class="node-desc${node._exp?' visible':''}">${esc(node.desc||'설명 없음')}</div>`;
+
+    el.addEventListener('click',ev=>{
+      ev.stopPropagation();
+      if(linkMode){if(node.id===linkSrcId){cancelLink();return;}addEdge(linkSrcId,node.id);cancelLink();return;}
+      node._exp=!node._exp;el.querySelector('.node-desc').classList.toggle('visible',node._exp);
+      selNodeId=node.id;selEdgeId=null;renderEdges();
+      document.querySelectorAll('.node.selected').forEach(n=>n.classList.remove('selected'));el.classList.add('selected');
+    });
+    el.addEventListener('contextmenu',ev=>{ev.preventDefault();ev.stopPropagation();if(linkMode){cancelLink();return;}ctxNodeId=node.id;showCtx('node-ctx',ev.clientX,ev.clientY);});
+    el.addEventListener('mouseenter',()=>{if(linkMode&&node.id!==linkSrcId)el.classList.add('link-target-hover');});
+    el.addEventListener('mouseleave',()=>el.classList.remove('link-target-hover'));
+    if(isEditMode)makeDrag(el,node);
+    canvas.appendChild(el);
+  });
+  setTimeout(renderEdges,0);
+}
+function makeDrag(el,node){
+  let dx,dy,sx,sy,dragging=false;
+  el.addEventListener('mousedown',ev=>{
+    if(ev.button!==0||linkMode)return;ev.stopPropagation();
+    dragging=false;dx=ev.clientX;dy=ev.clientY;sx=node.x;sy=node.y;
+    const mv=e=>{const ddx=(e.clientX-dx)/scale,ddy=(e.clientY-dy)/scale;if(Math.abs(ddx)>3||Math.abs(ddy)>3)dragging=true;if(!dragging)return;node.x=sx+ddx;node.y=sy+ddy;el.style.left=node.x+'px';el.style.top=node.y+'px';renderEdges();};
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);if(dragging)persist();};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ══════════════════════════════════════════════════
+// PAN & ZOOM
+// ══════════════════════════════════════════════════
+function applyT(){document.getElementById('canvas').style.transform=`translate(${panX}px,${panY}px) scale(${scale})`;}
+function setupPan(){
+  const w=document.getElementById('canvas-wrap');
+  w.addEventListener('mousedown',ev=>{if(ev.button!==0||ev.target.closest('.node')||linkMode)return;isPanning=true;lastMX=ev.clientX;lastMY=ev.clientY;w.classList.add('grabbing');hideCtx();});
+  document.addEventListener('mousemove',ev=>{if(!isPanning)return;panX+=ev.clientX-lastMX;panY+=ev.clientY-lastMY;lastMX=ev.clientX;lastMY=ev.clientY;applyT();});
+  document.addEventListener('mouseup',()=>{isPanning=false;document.getElementById('canvas-wrap').classList.remove('grabbing');});
+  w.addEventListener('click',ev=>{
+    const t=ev.target;
+    if(t===w||t===document.getElementById('canvas')||t===document.getElementById('svg-layer')){
+      if(linkMode){cancelLink();return;}
+      selNodeId=null;selEdgeId=null;document.querySelectorAll('.node.selected').forEach(n=>n.classList.remove('selected'));renderEdges();hideCtx();
+    }
+  });
+  w.addEventListener('contextmenu',ev=>ev.preventDefault());
+}
+function setupWheel(){
+  document.getElementById('canvas-wrap').addEventListener('wheel',ev=>{
+    ev.preventDefault();const d=ev.deltaY>0?.9:1.1;
+    const r=document.getElementById('canvas-wrap').getBoundingClientRect();
+    const mx=ev.clientX-r.left,my=ev.clientY-r.top;
+    const wx=(mx-panX)/scale,wy=(my-panY)/scale;
+    scale=Math.min(3,Math.max(.15,scale*d));panX=mx-wx*scale;panY=my-wy*scale;applyT();
+  },{passive:false});
+}
+function zoomIn(){scale=Math.min(3,scale*1.2);applyT();}
+function zoomOut(){scale=Math.max(.15,scale/1.2);applyT();}
+function zoomFit(){
+  if(!nodes().length)return;
+  const w=document.getElementById('canvas-wrap');
+  const xs=nodes().map(n=>n.x),ys=nodes().map(n=>n.y);
+  const minX=Math.min(...xs),maxX=Math.max(...xs)+180,minY=Math.min(...ys),maxY=Math.max(...ys)+80;
+  scale=Math.min(3,Math.max(.2,Math.min(w.offsetWidth/(maxX-minX+140),w.offsetHeight/(maxY-minY+140))));
+  panX=(w.offsetWidth-(maxX-minX)*scale)/2-minX*scale;
+  panY=(w.offsetHeight-(maxY-minY)*scale)/2-minY*scale;
+  applyT();
+}
+
+// ══════════════════════════════════════════════════
+// LINK MODE
+// ══════════════════════════════════════════════════
+function startLink(srcId){
+  linkMode=true;linkSrcId=srcId;
+  document.getElementById('link-banner').classList.add('visible');
+  document.getElementById('canvas-wrap').classList.add('linking');
+  document.querySelectorAll('.node.selected').forEach(n=>n.classList.remove('selected'));
+  const s=document.getElementById('node-'+srcId);if(s)s.classList.add('selected');
+}
+function cancelLink(){
+  linkMode=false;linkSrcId=null;
+  document.getElementById('link-banner').classList.remove('visible');
+  document.getElementById('canvas-wrap').classList.remove('linking');
+  document.querySelectorAll('.node.selected').forEach(n=>n.classList.remove('selected'));
+}
+
+// ══════════════════════════════════════════════════
+// CTX MENUS
+// ══════════════════════════════════════════════════
+function showCtx(id,x,y){hideCtx();const m=document.getElementById(id);m.style.left=x+'px';m.style.top=y+'px';m.classList.add('visible');}
+function hideCtx(){document.querySelectorAll('.ctx-menu').forEach(m=>m.classList.remove('visible'));}
+document.addEventListener('click',e=>{if(!e.target.closest('.ctx-menu'))hideCtx();});
+
+function ctxDeleteNode(){if(ctxNodeId){deleteNode(ctxNodeId);hideCtx();ctxNodeId=null;}}
+function ctxEditNode(){
+  const n=byId(ctxNodeId);if(!n)return;
+  document.getElementById('en-type').value=n.type;document.getElementById('en-name').value=n.name;document.getElementById('en-desc').value=n.desc||'';
+  document.getElementById('edit-node-modal').classList.remove('hidden');hideCtx();
+}
+function closeEditNodeModal(){document.getElementById('edit-node-modal').classList.add('hidden');}
+function saveEditNodeModal(){
+  if(!isEditMode)return;
+  const n=byId(ctxNodeId);if(!n)return;
+  n.type=document.getElementById('en-type').value;n.name=document.getElementById('en-name').value.trim()||n.name;n.desc=document.getElementById('en-desc').value.trim();
+  renderAll();closeEditNodeModal();persist();
+}
+function ctxStartLink(){if(isEditMode&&ctxNodeId){startLink(ctxNodeId);hideCtx();}}
+function ctxSuggestCurrent(){if(ctxNodeId){sugMode='current';hideCtx();openNodeSug('current',ctxNodeId);}}
+function ctxSuggestChild(){if(ctxNodeId){sugMode='child';hideCtx();openNodeSug('child',ctxNodeId);}}
+function ctxDeleteEdge(){if(ctxEdgeId){deleteEdge(ctxEdgeId);ctxEdgeId=null;hideCtx();}}
+function ctxEditEdge(){openEditEdgeModal();hideCtx();}
+function ctxSuggestEdge(){sugMode='edge';sugEdgeId=ctxEdgeId;hideCtx();openEdgeSug(ctxEdgeId);}
+
+// ══════════════════════════════════════════════════
+// EDIT EDGE MODAL
+// ══════════════════════════════════════════════════
+function openEditEdgeModal(){
+  const e=edgeById(ctxEdgeId);if(!e)return;
+  document.getElementById('ee-label').value=e.label||'';document.getElementById('ee-desc').value=e.desc||'';
+  document.getElementById('edit-edge-modal').classList.remove('hidden');
+}
+function closeEditEdgeModal(){document.getElementById('edit-edge-modal').classList.add('hidden');}
+function saveEditEdgeModal(){
+  const e=edgeById(ctxEdgeId);if(!e)return;
+  e.label=document.getElementById('ee-label').value.trim();e.desc=document.getElementById('ee-desc').value.trim();
+  renderAll();closeEditEdgeModal();persist();
+}
+
+// ══════════════════════════════════════════════════
+// ADD NODE PANEL
+// ══════════════════════════════════════════════════
+function openAddPanel(){
+  if(!isEditMode){showToast('편집 모드에서만 가능합니다');return;}
+  const sel=document.getElementById('np-parent');sel.innerHTML='<option value="">없음 (최상위)</option>';
+  nodes().forEach(n=>{const o=document.createElement('option');o.value=n.id;o.textContent=`${TI[n.type]} ${n.name}`;sel.appendChild(o);});
+  const ap=document.getElementById('add-panel');
+  ap.classList.add('visible');
+  ap.classList.toggle('no-panel',!activePanel);
+}
+function closeAddPanel(){document.getElementById('add-panel').classList.remove('visible');}
+function addNodeFromPanel(){
+  const type=document.getElementById('np-type').value,name=document.getElementById('np-name').value.trim(),desc=document.getElementById('np-desc').value.trim(),parent=document.getElementById('np-parent').value||null;
+  if(!name){showToast('이름을 입력하세요');return;}
+  let x=1900+Math.random()*200-100,y=1900+Math.random()*200-100;
+  if(parent){const p=byId(parent);if(p){x=p.x+230+Math.random()*50;y=p.y+Math.random()*100-50;}}
+  addNode({type,name,desc,x,y,parentId:parent});
+  document.getElementById('np-name').value='';document.getElementById('np-desc').value='';
+  closeAddPanel();showToast('노드가 추가되었습니다 ✓');
+}
+
+// ══════════════════════════════════════════════════
+// RIGHT PANEL
+// ══════════════════════════════════════════════════
+function togglePanel(name){
+  if(activePanel===name){closePanel();return;}
+  activePanel=name;
+  document.getElementById('right-panel').classList.add('visible');
+  document.getElementById('canvas-wrap').classList.remove('no-panel');
+  document.getElementById('zoom-ctrl').classList.remove('no-panel');
+  document.getElementById('add-panel').classList.remove('no-panel');
+  document.querySelectorAll('.tb-btn').forEach(b=>b.classList.remove('active-panel'));
+  document.getElementById('btn-'+name)?.classList.add('active-panel');
+  const titles={world:'🌐 세계관',chat:'💬 대화창',events:'📜 사건 목록'};
+  document.getElementById('rp-title').textContent=titles[name]||name;
+  const body=document.getElementById('rp-body');
+  if(name==='world')renderWorldPanel(body);
+  else if(name==='chat')renderChatPanel(body);
+  else if(name==='events')renderEventsPanel(body);
+}
+function closePanel(){
+  activePanel=null;
+  document.getElementById('right-panel').classList.remove('visible');
+  document.getElementById('canvas-wrap').classList.add('no-panel');
+  document.getElementById('zoom-ctrl').classList.add('no-panel');
+  document.getElementById('add-panel').classList.add('no-panel');
+  document.querySelectorAll('.tb-btn').forEach(b=>b.classList.remove('active-panel'));
+}
+
+// ── WORLD PANEL ──
+function renderWorldPanel(body){
+  const t=tab();
+  body.innerHTML=`
+    <div id="world-wrap">
+      <label style="font-size:11px;color:var(--text3)">세계관 프롬프트</label>
+      <textarea id="world-prompt-ta" placeholder="세계의 배경, 분위기, 장르를 입력하세요…">${esc(t.worldPrompt||'')}</textarea>
+      <button class="btn btn-primary" style="width:100%;font-size:12px;margin-bottom:14px" onclick="saveWorldPrompt()">저장</button>
+      <label style="font-size:11px;color:var(--text3)">참고 그림체 이미지 (최대 3장)</label>
+      <div class="ref-img-row" id="ref-img-row"></div>
+    </div>`;
+  renderRefImages();
+  document.getElementById('world-prompt-ta').addEventListener('input',()=>{});
+}
+function saveWorldPrompt(){
+  const t=tab();t.worldPrompt=document.getElementById('world-prompt-ta').value;persist();showToast('세계관 프롬프트 저장됨 ✓');}
+function renderRefImages(){
+  const t=tab();const row=document.getElementById('ref-img-row');if(!row)return;
+  if(!t.refImages)t.refImages=[];row.innerHTML='';
+  for(let i=0;i<3;i++){
+    const box=document.createElement('div');box.className='ref-img-box';
+    const img=document.createElement('img');
+    const plus=document.createElement('span');plus.className='plus';plus.textContent='＋';
+    const del=document.createElement('button');del.className='del-img';del.textContent='✕';del.title='삭제';
+    if(t.refImages[i]){img.src=t.refImages[i];img.style.display='block';del.style.display='flex';}
+    del.addEventListener('click',e=>{e.stopPropagation();t.refImages[i]=null;persist();renderRefImages();});
+    box.appendChild(img);box.appendChild(plus);box.appendChild(del);
+    box.addEventListener('click',()=>{
+      const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+      inp.onchange=()=>{
+        const file=inp.files[0];if(!file)return;
+        const reader=new FileReader();reader.onload=e=>{t.refImages[i]=e.target.result;persist();renderRefImages();};reader.readAsDataURL(file);
+      };inp.click();
+    });
+    row.appendChild(box);
+  }
+}
+
+// ── CHAT PANEL ──
+let chatHistory=[];
+function renderChatPanel(body){
+  body.innerHTML=`<div id="chat-wrap"><div id="chat-msgs"></div><div id="chat-input-row"><textarea id="chat-input" placeholder="세계관에 대해 질문하세요…"></textarea><button id="chat-send" onclick="sendChat()">➤</button></div></div>`;
+  document.getElementById('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}});
+  chatHistory.forEach(m=>appendChatMsg(m.role,m.content));
+}
+function appendChatMsg(role,content){
+  const msgs=document.getElementById('chat-msgs');if(!msgs)return;
+  const div=document.createElement('div');div.className='cm '+(role==='user'?'user':'ai');div.textContent=content;msgs.appendChild(div);msgs.scrollTop=msgs.scrollHeight;
+}
+async function sendChat(){
+  const inp=document.getElementById('chat-input');const q=inp.value.trim();if(!q)return;
+  inp.value='';
+  chatHistory.push({role:'user',content:q});appendChatMsg('user',q);
+  appendChatMsg('ai','…');
+  const {apiKey}=cfg();
+  if(!apiKey){const msgs=document.getElementById('chat-msgs');msgs.lastChild.textContent='API 키가 설정되지 않았습니다.';return;}
+  const t=tab();
+  const sys=`당신은 창작 세계관의 조언자입니다. 아래 세계관 정보를 바탕으로 질문에 자세히 답하세요.\n\n세계관 프롬프트: ${t.worldPrompt||'(없음)'}\n\n노드 목록:\n${nodeCtx()}\n\n관계 목록:\n${edgeCtx()}`;
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:800,system:sys,messages:chatHistory.map(m=>({role:m.role,content:m.content}))})});
+    const data=await r.json();
+    const ans=data.content?data.content.map(c=>c.text||'').join(''):'오류가 발생했습니다.';
+    chatHistory.push({role:'assistant',content:ans});
+    const msgs=document.getElementById('chat-msgs');if(msgs&&msgs.lastChild)msgs.lastChild.textContent=ans;msgs.scrollTop=msgs.scrollHeight;
+  }catch(e){const msgs=document.getElementById('chat-msgs');if(msgs&&msgs.lastChild)msgs.lastChild.textContent='오류: '+e.message;}
+}
+
+// ── EVENTS PANEL ──
+function renderEventsPanel(body){
+  body.innerHTML=`<div id="events-wrap"><button id="events-gen-btn" onclick="generateEvent()">⚡ 새 사건 AI 생성</button><div id="events-list"></div></div>`;
+  refreshEventsList();
+}
+function refreshEventsList(){
+  const list=document.getElementById('events-list');if(!list)return;
+  list.innerHTML='';
+  const evs=[...events()].sort((a,b)=>((a.order||0)-(b.order||0)));
+  if(!evs.length){list.innerHTML='<div style="font-size:12px;color:var(--text3);padding:8px 0">아직 사건이 없습니다. AI로 생성해보세요.</div>';return;}
+  evs.forEach(ev=>{
+    const card=document.createElement('div');card.className='event-card';
+    card.innerHTML=`<div class="ev-time">${esc(ev.time||'시간 미정')}</div><div class="ev-body">${esc(ev.body)}</div><button class="ev-del" onclick="deleteEvent('${ev.id}')">✕</button>`;
+    list.appendChild(card);
+  });
+}
+async function generateEvent(){
+  const {apiKey}=cfg();if(!apiKey){showToast('API 키가 설정되지 않았습니다');return;}
+  const genBtn=document.getElementById('events-gen-btn');genBtn.textContent='생성 중…';genBtn.disabled=true;
+  const t=tab();
+  const sys=`당신은 창작 세계관의 스토리텔러입니다. 반드시 JSON으로만 응답하세요.\n형식: {"time":"시간 표현(예: 1년 전, 사건 초반)","body":"사건 내용","order":정수(낮을수록 과거)}`;
+  const usr=`세계관: ${t.worldPrompt||'없음'}\n노드:\n${nodeCtx()}\n관계:\n${edgeCtx()}\n기존사건:\n${eventCtx()}\n\n위 정보를 바탕으로 일어날만한 새로운 사건 1개를 생성하고, 기존 사건들 사이의 시간 순서에서 어디에 위치하는지 order로 표현하세요.`;
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:400,system:sys,messages:[{role:'user',content:usr}]})});
+    const data=await r.json();
+    const text=data.content.map(c=>c.text||'').join('');
+    const clean=text.replace(/```json|```/g,'').trim();
+    const ev=JSON.parse(clean);
+    ev.id=gid();t.events.push(ev);persist();refreshEventsList();showToast('사건이 생성되었습니다 ✓');
+  }catch(e){showToast('생성 오류: '+e.message);}
+  genBtn.textContent='⚡ 새 사건 AI 생성';genBtn.disabled=false;
+}
+function deleteEvent(id){const t=tab();t.events=t.events.filter(e=>e.id!==id);persist();refreshEventsList();}
+function addEventFromStory(body,time){const t=tab();const maxOrder=Math.max(0,...t.events.map(e=>e.order||0));const ev={id:gid(),time:time||'최근',body,order:maxOrder+1};t.events.push(ev);persist();showToast('사건이 저장되었습니다 ✓');}
+
+// ══════════════════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════════════════
+function openSettingsModal(){
+  const c=cfg();
+  document.getElementById('api-key-input').value=c.apiKey;
+  document.getElementById('google-api-input').value=c.googleKey;
+  document.getElementById('firebase-cfg-input').value=localStorage.getItem('wm_fbcfg')||'';
+  document.getElementById('master-code-input').value=c.masterCode;
+  document.getElementById('settings-modal').classList.remove('hidden');
+}
+function closeSettingsModal(){document.getElementById('settings-modal').classList.add('hidden');}
+function saveSettings(){
+  localStorage.setItem('wm_k',document.getElementById('api-key-input').value.trim());
+  localStorage.setItem('wm_gk',document.getElementById('google-api-input').value.trim());
+  const mc=document.getElementById('master-code-input').value.trim();
+  if(mc)localStorage.setItem('wm_mc',mc);
+  const fbStr=document.getElementById('firebase-cfg-input').value.trim();
+  if(fbStr){localStorage.setItem('wm_fbcfg',fbStr);initFirebase();}
+  closeSettingsModal();showToast('설정이 저장되었습니다 ✓');
+}
+
+// ══════════════════════════════════════════════════
+// SUGGESTION — NODE
+// ══════════════════════════════════════════════════
+function openNodeSug(mode,nodeId){
+  sugNodeId=nodeId;
+  const n=byId(nodeId);if(!n)return;
+  document.getElementById('sug-label').textContent='✨ '+(mode==='current'?`"${n.name}" 노드 추천`:`"${n.name}" 하위 노드 추천`);
+  document.getElementById('sug-mode').textContent=mode==='current'?'현재 노드의 내용을 개선합니다':'하위 노드로 추가할 항목을 추천합니다';
+  setLoading();document.getElementById('sug-panel').classList.add('visible');
+  fetchNodeSug(mode,nodeId);
+}
+function openEdgeSug(edgeId){
+  sugEdgeId=edgeId;
+  const e=edgeById(edgeId),fn=byId(e?.from),tn=byId(e?.to);
+  document.getElementById('sug-label').textContent=`✨ "${fn?.name||'?'}" ↔ "${tn?.name||'?'}" 관계 추천`;
+  document.getElementById('sug-mode').textContent='두 노드의 관계 레이블과 설명을 추천합니다';
+  setLoading();document.getElementById('sug-panel').classList.add('visible');
+  fetchEdgeSug(edgeId);
+}
+function closeSug(){document.getElementById('sug-panel').classList.remove('visible');}
+function refreshSug(){
+  if(sugMode==='edge'){setLoading();fetchEdgeSug(sugEdgeId);}
+  else if(sugNodeId){setLoading();fetchNodeSug(sugMode,sugNodeId);}
+}
+function setLoading(){document.getElementById('sug-cards').innerHTML='<div class="sug-card" style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;min-height:70px;cursor:default"><div class="ld"><span></span><span></span><span></span></div></div>';}
+function showSugErr(msg){document.getElementById('sug-cards').innerHTML=`<div class="sug-card" style="grid-column:1/-1;cursor:default;text-align:center;color:var(--danger);font-size:12px;padding:16px">⚠ ${esc(msg)}</div>`;}
+
+async function fetchNodeSug(mode,nodeId){
+  const {apiKey}=cfg();if(!apiKey){showSugErr('API 키가 설정되지 않았습니다. ⚙ 설정에서 입력해주세요.');return;}
+  const n=byId(nodeId);if(!n)return;
+  const t=tab();
+  const pe=edges().find(e=>e.to===nodeId),pn=pe?byId(pe.from):null;
+  const title=document.getElementById('project-title-input').value;
+  const types='world,group,space,char,item,trait,custom';
+  // Use short prompts to avoid JSON truncation
+  const sys='창작 세계관 전문가. JSON 배열만 응답. 형식:[{"name":"이름","desc":"한두 문장 설명","type":"타입"}] 타입은 world|group|space|char|item|trait|custom 중 하나.';
+  const nodeInfo=`유형:${TL[n.type]} 이름:${n.name} 설명:${(n.desc||'없음').slice(0,80)}`;
+  const ctx=nodeCtx().slice(0,600);
+  const usr=mode==='current'
+    ?`프로젝트:${title.slice(0,30)} 세계관:${(t.worldPrompt||'없음').slice(0,100)}\n현재노드: ${nodeInfo}\n전체노드(요약):\n${ctx}\n\n위 노드를 개선하는 버전 3가지를 JSON으로.`
+    :`프로젝트:${title.slice(0,30)} 세계관:${(t.worldPrompt||'없음').slice(0,100)}\n상위:${pn?TL[pn.type]+' '+pn.name:'없음'}\n현재: ${nodeInfo}\n전체노드(요약):\n${ctx}\n\n하위에 추가할 노드 3가지를 JSON으로.`;
+  await callAI(sys,usr,res=>renderNodeCards(res,mode,nodeId));
+}
+
+async function fetchEdgeSug(edgeId){
+  const {apiKey}=cfg();if(!apiKey){showSugErr('API 키가 설정되지 않았습니다.');return;}
+  const e=edgeById(edgeId);if(!e)return;
+  const fn=byId(e.from),tn=byId(e.to);
+  const t=tab();const title=document.getElementById('project-title-input').value;
+  const sys='창작 세계관 전문가. JSON 배열만 응답. 형식:[{"label":"관계명(4자이내)","desc":"한두 문장 설명"}]';
+  const usr=`프로젝트:${title.slice(0,30)} 세계관:${(t.worldPrompt||'없음').slice(0,80)}\nA:[${TL[fn?.type]}]${fn?.name}:${(fn?.desc||'').slice(0,60)}\nB:[${TL[tn?.type]}]${tn?.name}:${(tn?.desc||'').slice(0,60)}\n\n어울리는 관계 3가지를 JSON으로.`;
+  await callAI(sys,usr,res=>renderEdgeCards(res,edgeId));
+}
+
+async function callAI(sys,usr,onSuccess){
+  const {apiKey}=cfg();
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:600,system:sys,messages:[{role:'user',content:usr}]})});
+    if(!r.ok){const err=await r.json();showSugErr('API 오류: '+(err.error?.message||r.status));return;}
+    const data=await r.json();
+    const text=data.content.map(c=>c.text||'').join('');
+    // robust JSON extraction
+    const jsonMatch=text.match(/\[[\s\S]*\]/);
+    if(!jsonMatch){showSugErr('JSON 파싱 오류: 응답에서 배열을 찾을 수 없습니다.');return;}
+    onSuccess(JSON.parse(jsonMatch[0]));
+  }catch(e){showSugErr('오류: '+e.message);}
+}
+
+function renderNodeCards(sug,mode,nodeId){
+  const c=document.getElementById('sug-cards');c.innerHTML='';
+  sug.slice(0,3).forEach(s=>{
+    const card=document.createElement('div');card.className='sug-card';
+    const col=TC[s.type]||'#5a6090';
+    card.innerHTML=`<div class="s-tag" style="background:${col}22;color:${col};border:1px solid ${col}55">${TI[s.type]||'📌'} ${TL[s.type]||s.type}</div><div class="s-name">${esc(s.name)}</div><div class="s-desc">${esc(s.desc)}</div><button class="s-apply">적용 →</button>`;
+    const apply=()=>{
+      const n=byId(nodeId);if(!n)return;
+      if(mode==='current'){n.name=s.name;n.desc=s.desc;n.type=s.type||n.type;renderAll();persist();showToast(`"${n.name}" 업데이트됨`);}
+      else{addNode({type:s.type||'custom',name:s.name,desc:s.desc,x:n.x+250+Math.random()*40,y:n.y+(Math.random()*160-80),parentId:nodeId});showToast(`"${s.name}" 추가됨`);}
+      closeSug();
+    };
+    card.querySelector('.s-apply').addEventListener('click',e=>{e.stopPropagation();apply();});card.addEventListener('click',apply);c.appendChild(card);
+  });
+}
+function renderEdgeCards(sug,edgeId){
+  const c=document.getElementById('sug-cards');c.innerHTML='';
+  sug.slice(0,3).forEach(s=>{
+    const card=document.createElement('div');card.className='sug-card';
+    card.innerHTML=`<div class="s-name" style="color:var(--accent2)">🔗 ${esc(s.label)}</div><div class="s-desc">${esc(s.desc)}</div><button class="s-apply">적용 →</button>`;
+    const apply=()=>{const e=edgeById(edgeId);if(!e)return;e.label=s.label;e.desc=s.desc;renderAll();persist();closeSug();showToast('관계가 업데이트되었습니다 ✓');};
+    card.querySelector('.s-apply').addEventListener('click',ev=>{ev.stopPropagation();apply();});card.addEventListener('click',apply);c.appendChild(card);
+  });
+}
+
+// ══════════════════════════════════════════════════
+// PROTAGONIST VISIT
+// ══════════════════════════════════════════════════
+function ctxVisit(){
+  protagonistNodeId=ctxNodeId;hideCtx();
+  openProtagonist(ctxNodeId);
+}
+function openProtagonist(nodeId){
+  const panel=document.getElementById('protagonist-panel');panel.classList.add('visible');
+  const n=byId(nodeId);if(!n)return;
+  document.getElementById('protagonist-node-name').textContent=`대상: [${TL[n.type]}] ${n.name}`;
+  document.getElementById('protagonist-story').innerHTML='<div class="ld"><span></span><span></span><span></span></div>';
+  document.getElementById('protagonist-img-wrap').style.display='none';
+  protagonistStory='';
+  fetchProtagonistStory(nodeId);
+}
+function closeProtagonist(){document.getElementById('protagonist-panel').classList.remove('visible');}
+async function fetchProtagonistStory(nodeId){
+  const {apiKey}=cfg();
+  const storyEl=document.getElementById('protagonist-story');
+  if(!apiKey){storyEl.textContent='API 키가 설정되지 않았습니다.';return;}
+  const n=byId(nodeId);const t=tab();
+  // find protagonist node
+  const hero=nodes().find(nd=>/주인공/i.test(nd.name));
+  // find nodes connected to target
+  const connectedIds=edges().filter(e=>e.from===nodeId||e.to===nodeId).map(e=>e.from===nodeId?e.to:e.from);
+  const connected=connectedIds.map(id=>byId(id)).filter(Boolean);
+
+  const sys='창작 세계관의 스토리텔러. 주인공의 상호작용 장면을 생생하게 1-2문단으로 묘사하세요. 장소면 방문, 인물이면 대화, 사물이면 획득/관찰, 사건이면 체험. 연결된 인물이 있으면 함께 등장시키세요.';
+  const usr=`세계관: ${(t.worldPrompt||'없음').slice(0,120)}\n주인공: ${hero?hero.name+' - '+hero.desc:'(이름이 주인공인 노드를 찾지 못함)'}\n대상 노드: [${TL[n.type]}] ${n.name} - ${n.desc||''}\n연결된 노드: ${connected.map(c=>`[${TL[c.type]}]${c.name}`).join(', ')||'없음'}\n전체 관계: ${edgeCtx().slice(0,400)}\n\n주인공이 위 대상과 상호작용하는 장면을 묘사하세요.`;
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:500,system:sys,messages:[{role:'user',content:usr}]})});
+    const data=await r.json();
+    protagonistStory=data.content?data.content.map(c=>c.text||'').join(''):'오류가 발생했습니다.';
+    storyEl.textContent=protagonistStory;
+  }catch(e){storyEl.textContent='오류: '+e.message;}
+}
+function protagonistRegen(){if(protagonistNodeId)fetchProtagonistStory(protagonistNodeId);}
+async function protagonistGenImg(){
+  const {googleKey}=cfg();
+  if(!googleKey){showToast('Google API 키가 설정되지 않았습니다');return;}
+  if(!protagonistStory){showToast('먼저 장면을 생성하세요');return;}
+  const t=tab();
+  const btn=document.getElementById('btn-gen-img');btn.textContent='생성 중…';btn.disabled=true;
+  // Build style hint from ref images
+  const refHint=t.refImages?.filter(Boolean).length?'(참고 그림체 이미지 있음, 해당 스타일로)':'';
+  const prompt=`${protagonistStory.slice(0,300)} ${refHint} 애니메이션 일러스트 스타일`;
+  try{
+    const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${googleKey}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({contents:[{parts:[{text:`Generate an anime illustration: ${prompt}`}]}],generationConfig:{responseModalities:['IMAGE','TEXT']}})
+    });
+    const data=await r.json();
+    const imgPart=data.candidates?.[0]?.content?.parts?.find(p=>p.inlineData);
+    if(imgPart){
+      const imgEl=document.getElementById('protagonist-img');
+      imgEl.src=`data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
+      document.getElementById('protagonist-img-wrap').style.display='block';
+    }else{showToast('이미지 생성에 실패했습니다');}
+  }catch(e){showToast('이미지 생성 오류: '+e.message);}
+  btn.textContent='🎨 이미지 생성';btn.disabled=false;
+}
+function protagonistSaveEvent(){
+  if(!protagonistStory){showToast('먼저 장면을 생성하세요');return;}
+  const n=byId(protagonistNodeId);
+  addEventFromStory(protagonistStory,`${n?n.name:''} 방문`);
+  closeProtagonist();
+  if(activePanel!=='events')togglePanel('events');
+}
+
+// ══════════════════════════════════════════════════
+// EXPORT
+// ══════════════════════════════════════════════════
+function exportData(){
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify({tabs},null,2)],{type:'application/json'}));
+  a.download='worldmind-export.json';a.click();
+}
+
+// ══════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════
+let toastT;
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2400);}
+
+// ══════════════════════════════════════════════════
+// BOOT
+// ══════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded',init);
+setInterval(()=>{saveLocal();if(fbEnabled)saveToFirebase();},60000);
+</script>
+</body>
+</html>
