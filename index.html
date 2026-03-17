@@ -666,6 +666,22 @@ function extractJSON(text){
   return null;
 }
 
+// ── 브래킷 카운팅으로 첫 번째 완전한 JSON 배열 추출 ──
+function extractJSONArray(text){
+  let start=-1,depth=0,inStr=false,esc=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(esc){esc=false;continue;}
+    if(c==='\\'){esc=true;continue;}
+    if(c==='"'&&!esc){inStr=!inStr;continue;}
+    if(inStr)continue;
+    if(c==='['){if(depth===0)start=i;depth++;}
+    else if(c===']'){depth--;if(depth===0&&start!==-1)return text.slice(start,i+1);}
+  }
+  if(start!==-1)return text.slice(start);
+  return null;
+}
+
 // ── 부분 복구: 개별 노드 객체들을 하나씩 추출 ──
 function extractPartialNodes(text){
   const results=[];
@@ -1914,17 +1930,18 @@ async function fetchEdgeSug(edgeId){
 async function callAI(sys,usr,onSuccess){
   try{
     const text=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}]});
-    const jsonMatch=text.match(/\[[\s\S]*?\]/);
-    if(!jsonMatch){
+    const cleaned=text.replace(/```(?:json)?\s*/g,'').replace(/```\s*/g,'').trim();
+    const jsonStr=extractJSONArray(cleaned);
+    if(!jsonStr){
       showSugErr('응답 파싱 오류 — 다시 시도해주세요.');
       console.error('Raw response:',text);
       return;
     }
     try{
-      onSuccess(JSON.parse(repairJSON(jsonMatch[0])));
+      onSuccess(JSON.parse(repairJSON(jsonStr)));
     }catch(pe){
       showSugErr('JSON 파싱 오류: '+pe.message);
-      console.error('JSON parse error:',jsonMatch[0]);
+      console.error('JSON parse error:',jsonStr);
     }
   }catch(e){showSugErr(e.message);console.error(e);}
 }
