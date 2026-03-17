@@ -2309,15 +2309,15 @@ function closeAIGen(){
 }
 
 // ══════════════════════════════════════════════════
-// AUTO LAYOUT — Hierarchical Tree + Force Repulsion
+// AUTO LAYOUT — Radial Tree (parent-child only)
 // ══════════════════════════════════════════════════
 function autoLayout(){
   const ns=nodes();const es=edges();
   if(!ns.length){showToast('정렬할 노드가 없습니다');return;}
 
-  // ── 1. Build parent tree ──
-  const parentOf={};   // nodeId → parentId
-  const childrenOf={}; // nodeId → [childIds]
+  // ── 1. Build parent tree (only isParent edges matter) ──
+  const parentOf={};
+  const childrenOf={};
   ns.forEach(n=>{childrenOf[n.id]=[];});
   es.filter(e=>e.isParent).forEach(e=>{
     if(byId(e.from)&&byId(e.to)){
@@ -2326,101 +2326,147 @@ function autoLayout(){
     }
   });
 
-  // ── 2. Find roots (no parent) ──
-  const roots=ns.filter(n=>!parentOf[n.id]);
-
-  // ── 3. Compute subtree sizes ──
-  const subtreeSize={};
-  function calcSize(id){
-    const ch=childrenOf[id]||[];
-    if(!ch.length){subtreeSize[id]=1;return 1;}
-    let s=0;ch.forEach(c=>s+=calcSize(c));
-    subtreeSize[id]=s;return s;
-  }
-  roots.forEach(r=>calcSize(r.id));
-  // Handle orphans (no tree connection at all)
-  ns.forEach(n=>{if(subtreeSize[n.id]===undefined)subtreeSize[n.id]=1;});
-
-  // ── 4. Hierarchical layout per tree ──
-  const NODE_W=200,NODE_H=90,LEVEL_H=160,SIBLING_GAP=30;
-  const positions={};  // nodeId → {x, y}
-  let treeOffsetX=0;
-
-  // Separate nodes into: tree roots, connected-but-not-in-tree, isolated
+  // ── 2. Find roots & orphans ──
   const inTree=new Set();
   function markTree(id){inTree.add(id);(childrenOf[id]||[]).forEach(c=>markTree(c));}
-  roots.forEach(r=>markTree(r.id));
 
-  // Non-parent edges: nodes connected but not via parent
-  const connectedIds=new Set();
-  es.forEach(e=>{if(byId(e.from))connectedIds.add(e.from);if(byId(e.to))connectedIds.add(e.to);});
-  const isolated=ns.filter(n=>!inTree.has(n.id)&&!connectedIds.has(n.id));
-  const connectedNonTree=ns.filter(n=>!inTree.has(n.id)&&connectedIds.has(n.id));
+  const treeRoots=ns.filter(n=>!parentOf[n.id]&&(childrenOf[n.id]||[]).length>0);
+  treeRoots.forEach(r=>markTree(r.id));
 
-  // Layout each tree hierarchically
-  function layoutTree(rootId,offsetX){
-    let x=offsetX;
-    function lay(id,depth){
-      const ch=childrenOf[id]||[];
-      if(!ch.length){
-        positions[id]={x:x,y:depth*LEVEL_H};
-        x+=NODE_W+SIBLING_GAP;
-        return;
+  // Nodes with no parent AND no children = orphans
+  const orphans=ns.filter(n=>!inTree.has(n.id));
+
+  // ── 3. Count leaf descendants for angular weighting ──
+  const leafCount={};
+  function countLeaves(id){
+    const ch=childrenOf[id]||[];
+    if(!ch.length){leafCount[id]=1;return 1;}
+    let s=0;ch.forEach(c=>s+=countLeaves(c));
+    leafCount[id]=s;return s;
+  }
+  treeRoots.forEach(r=>countLeaves(r.id));
+  orphans.forEach(n=>{leafCount[n.id]=1;});
+
+  // ── 4. Compute max depth per tree ──
+  function maxDepth(id,d){
+    const ch=childrenOf[id]||[];
+    if(!ch.length)return d;
+    return Math.max(...ch.map(c=>maxDepth(c,d+1)));
+  }
+
+  // ── 5. Radial layout ──
+  const positions={};
+  const RING_GAP=240;       // distance between depth rings
+  const MIN_NODE_ARC=200;   // minimum arc-length per leaf node
+  const CX=2000,CY=2000;   // canvas center
+
+  // Total leaf count for all trees + orphans → full circle allocation
+  const totalLeaves=treeRoots.reduce((s,r)=>s+leafCount[r.id],0)+orphans.length;
+  const FULL_ARC=Math.max(totalLeaves*MIN_NODE_ARC,800);
+  // If small number of nodes, use a fixed comfortable radius
+  const baseRadius=Math.max(RING_GAP,FULL_ARC/(2*Math.PI));
+
+  // Assign each tree a slice of the circle proportional to its leaf count
+  let angleOffset=-Math.PI/2; // start from top
+  const totalAngle=2*Math.PI;
+
+  function layoutRadial(rootId,startAngle,endAngle){
+    positions[rootId]={x:CX,y:CY}; // root at center? No — at depth 0 ring
+
+    function lay(id,depth,aStart,aEnd){
+      const angle=(aStart+aEnd)/2;
+      const r=depth*RING_GAP+baseRadius*(depth===0?0:1);
+      if(depth===0){
+        // Tree root: place at ring 0 (which is at baseRadius from center for multi-tree)
+        if(treeRoots.length===1){
+          positions[id]={x:CX,y:CY};
+        }else{
+          positions[id]={x:CX+Math.cos(angle)*baseRadius*0.5,y:CY+Math.sin(angle)*baseRadius*0.5};
+        }
+      }else{
+        const parentPos=positions[parentOf[id]];
+        if(parentPos){
+          // Place relative to parent, radiating outward
+          const px=parentPos.x-CX,py=parentPos.y-CY;
+          const parentAngle=Math.atan2(py,px);
+          // Blend parent direction with assigned angle
+          const blendAngle=parentAngle*0.3+angle*0.7;
+          const dist=RING_GAP;
+          positions[id]={x:parentPos.x+Math.cos(blendAngle)*dist,y:parentPos.y+Math.sin(blendAngle)*dist};
+        }else{
+          positions[id]={x:CX+Math.cos(angle)*r,y:CY+Math.sin(angle)*r};
+        }
       }
-      ch.forEach(c=>lay(c,depth+1));
-      // center parent above children
-      const firstChild=positions[ch[0]];
-      const lastChild=positions[ch[ch.length-1]];
-      positions[id]={x:(firstChild.x+lastChild.x)/2,y:depth*LEVEL_H};
+
+      const ch=childrenOf[id]||[];
+      if(!ch.length)return;
+
+      // Distribute children's angles proportional to their leaf counts
+      const totalCh=ch.reduce((s,c)=>s+(leafCount[c]||1),0);
+      let a=aStart;
+      ch.forEach(c=>{
+        const share=(leafCount[c]||1)/totalCh;
+        const cEnd=a+share*(aEnd-aStart);
+        lay(c,depth+1,a,cEnd);
+        a=cEnd;
+      });
     }
-    lay(rootId,0);
-    return x;
+
+    lay(rootId,0,startAngle,endAngle);
   }
 
-  roots.forEach(r=>{
-    treeOffsetX=layoutTree(r.id,treeOffsetX);
-    treeOffsetX+=NODE_W; // gap between trees
+  // Lay out each tree
+  const treeTotalLeaves=treeRoots.reduce((s,r)=>s+leafCount[r.id],0)+orphans.length;
+  let currentAngle=angleOffset;
+
+  treeRoots.forEach(r=>{
+    const share=(leafCount[r.id]||1)/treeTotalLeaves;
+    const sliceAngle=share*totalAngle;
+    layoutRadial(r.id,currentAngle,currentAngle+sliceAngle);
+    currentAngle+=sliceAngle;
   });
 
-  // ── 5. Place connected-non-tree nodes using force from their connections ──
-  connectedNonTree.forEach((n,i)=>{
-    // Average position of connected nodes that are already placed
-    const connected=es.filter(e=>e.from===n.id||e.to===n.id)
-      .map(e=>e.from===n.id?e.to:e.from)
-      .filter(id=>positions[id]);
-    if(connected.length){
-      const avgX=connected.reduce((s,id)=>s+positions[id].x,0)/connected.length;
-      const avgY=connected.reduce((s,id)=>s+positions[id].y,0)/connected.length;
-      positions[n.id]={x:avgX+NODE_W+40,y:avgY+(i%2===0?-60:60)};
-    }else{
-      positions[n.id]={x:treeOffsetX,y:i*NODE_H};
-      treeOffsetX+=NODE_W+SIBLING_GAP;
-    }
-  });
-
-  // ── 6. Place isolated nodes in a grid below ──
-  if(isolated.length){
-    const cols=Math.ceil(Math.sqrt(isolated.length));
-    const maxY=Object.values(positions).reduce((m,p)=>Math.max(m,p.y),0);
-    const gridStartY=maxY+LEVEL_H+80;
-    isolated.forEach((n,i)=>{
-      const row=Math.floor(i/cols);
-      const col=i%cols;
-      positions[n.id]={x:col*(NODE_W+SIBLING_GAP),y:gridStartY+row*(NODE_H+SIBLING_GAP)};
+  // ── 6. Orphans: distribute in outer ring ──
+  if(orphans.length){
+    const orphanShare=orphans.length/treeTotalLeaves;
+    const orphanStartAngle=currentAngle;
+    const orphanEndAngle=currentAngle+orphanShare*totalAngle;
+    // Find the max radius used by tree nodes
+    let maxR=0;
+    Object.values(positions).forEach(p=>{
+      const d=Math.sqrt((p.x-CX)**2+(p.y-CY)**2);
+      if(d>maxR)maxR=d;
     });
+    const orphanR=Math.max(maxR+RING_GAP,baseRadius);
+
+    if(orphans.length===1){
+      // Single orphan with no tree: place at center
+      if(!treeRoots.length){
+        positions[orphans[0].id]={x:CX,y:CY};
+      }else{
+        const a=(orphanStartAngle+orphanEndAngle)/2;
+        positions[orphans[0].id]={x:CX+Math.cos(a)*orphanR,y:CY+Math.sin(a)*orphanR};
+      }
+    }else{
+      const angleStep=(orphanEndAngle-orphanStartAngle)/orphans.length;
+      orphans.forEach((n,i)=>{
+        const a=orphanStartAngle+angleStep*(i+0.5);
+        positions[n.id]={x:CX+Math.cos(a)*orphanR,y:CY+Math.sin(a)*orphanR};
+      });
+    }
   }
 
-  // ── 7. Force repulsion (overlap removal, 20 iterations) ──
+  // ── 7. Force repulsion (overlap removal, 25 iterations) ──
   const allIds=Object.keys(positions);
-  for(let iter=0;iter<20;iter++){
+  const MIN_DIST=220;
+  for(let iter=0;iter<25;iter++){
     for(let i=0;i<allIds.length;i++){
       for(let j=i+1;j<allIds.length;j++){
         const a=positions[allIds[i]],b=positions[allIds[j]];
         let dx=b.x-a.x,dy=b.y-a.y;
         const dist=Math.sqrt(dx*dx+dy*dy)||1;
-        const minDist=NODE_W+20;
-        if(dist<minDist){
-          const force=(minDist-dist)/2;
+        if(dist<MIN_DIST){
+          const force=(MIN_DIST-dist)/2*0.4;
           const fx=(dx/dist)*force,fy=(dy/dist)*force;
           a.x-=fx;a.y-=fy;
           b.x+=fx;b.y+=fy;
@@ -2429,22 +2475,20 @@ function autoLayout(){
     }
   }
 
-  // ── 8. Normalize: shift so minimum is at (100, 100) ──
+  // ── 8. Normalize to positive coordinates ──
   const allPos=Object.values(positions);
   if(!allPos.length)return;
   const minX=Math.min(...allPos.map(p=>p.x));
   const minY=Math.min(...allPos.map(p=>p.y));
   allIds.forEach(id=>{positions[id].x-=minX-100;positions[id].y-=minY-100;});
 
-  // ── 9. Animate to new positions ──
+  // ── 9. Animate ──
   ns.forEach(n=>{
-    const p=positions[n.id];
-    if(!p)return;
+    const p=positions[n.id];if(!p)return;
     const el=document.getElementById('node-'+n.id);
     if(el){
       el.style.transition='left .5s ease, top .5s ease';
-      el.style.left=p.x+'px';
-      el.style.top=p.y+'px';
+      el.style.left=p.x+'px';el.style.top=p.y+'px';
       setTimeout(()=>el.style.transition='',600);
     }
     n.x=p.x;n.y=p.y;
