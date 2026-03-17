@@ -649,15 +649,73 @@ function repairJSON(s){
   return str;
 }
 
+// ── 브래킷 카운팅으로 첫 번째 완전한 JSON 객체 추출 ──
+function extractJSON(text){
+  let start=-1,depth=0,inStr=false,esc=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(esc){esc=false;continue;}
+    if(c==='\\'){esc=true;continue;}
+    if(c==='"'&&!esc){inStr=!inStr;continue;}
+    if(inStr)continue;
+    if(c==='{'){if(depth===0)start=i;depth++;}
+    else if(c==='}'){depth--;if(depth===0&&start!==-1)return text.slice(start,i+1);}
+  }
+  // 닫히지 않은 경우 — 있는 만큼 반환 (repairJSON이 닫아줌)
+  if(start!==-1)return text.slice(start);
+  return null;
+}
+
+// ── 부분 복구: 개별 노드 객체들을 하나씩 추출 ──
+function extractPartialNodes(text){
+  const results=[];
+  // "nodes" 배열 시작 위치 찾기
+  const idx=text.indexOf('"nodes"');
+  if(idx===-1)return results;
+  const arrStart=text.indexOf('[',idx);
+  if(arrStart===-1)return results;
+  // 배열 내에서 각 {...} 객체를 브래킷 카운팅으로 추출
+  let pos=arrStart+1;
+  while(pos<text.length){
+    // 다음 { 찾기
+    const objStart=text.indexOf('{',pos);
+    if(objStart===-1)break;
+    // 이 { 에 대응하는 } 찾기
+    let depth=0,inStr=false,esc=false,objEnd=-1;
+    for(let i=objStart;i<text.length;i++){
+      const c=text[i];
+      if(esc){esc=false;continue;}
+      if(c==='\\'){esc=true;continue;}
+      if(c==='"'){inStr=!inStr;continue;}
+      if(inStr)continue;
+      if(c==='{')depth++;
+      else if(c==='}'){depth--;if(depth===0){objEnd=i;break;}}
+      else if(c===']'&&depth===0)break; // 배열 끝
+    }
+    if(objEnd===-1)break;
+    try{
+      const node=JSON.parse(text.slice(objStart,objEnd+1));
+      if(node.name)results.push(node);
+    }catch(e){/* skip malformed */}
+    pos=objEnd+1;
+  }
+  return results;
+}
+
 // ══════════════════════════════════════════════════
 // APP STATE
 // ══════════════════════════════════════════════════
 let tabs=[];           // [{id,title,nodes,edges,events,worldPrompt,refImages}]
 let activeTabId=null;
 let isEditMode=false;
-let fbApp=null, fbDb=null, fbRef=null, fbUnsub=null;
+let fbApp=null, fbDb=null, fbRef=null;
 let fbEnabled=false;
-let remoteLock=false;  // prevent echo from own writes
+
+// ── Real-time sync state ──
+const FB_SID='s'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); // session writer ID
+let fbListenerCleanups=[];  // active listener detach functions
+let fbLastSnap={};          // last synced snapshot for diff
+let fbApplyingRemote=false; // flag: applying remote changes (don't echo back)
 
 let scale=1,panX=0,panY=0;
 let isPanning=false,lastMX=0,lastMY=0;
@@ -710,7 +768,10 @@ function createTab(title){
 function addTab(){
   const t=createTab('새 세계관 '+(tabs.length+1));
   switchTab(t.id);
-  saveToFirebase();
+  fbSaveTabList();
+  fbSaveTabMeta();
+  // save initial world node
+  if(t.nodes.length)fbSaveNode(t.nodes[0]);
 }
 
 function switchTab(id){
@@ -719,6 +780,8 @@ function switchTab(id){
   document.getElementById('project-title-input').value=t.title;
   renderTabBar();
   renderAll();
+  fbTakeSnap();
+  if(fbEnabled)fbAttachTab(id);
   setTimeout(zoomFit,80);
 }
 
@@ -741,9 +804,11 @@ function confirmTabClose(){
   pendingCloseTabId=null;
   document.getElementById('tab-confirm-modal').classList.add('hidden');
   tabs=tabs.filter(t=>t.id!==id);
+  // Remove from Firebase
+  fbRemoveTab(id);
+  fbSaveTabList();
   if(activeTabId===id)switchTab(tabs[0].id);
   else{renderTabBar();renderAll();}
-  saveToFirebase();
 }
 
 function renderTabBar(){
@@ -769,136 +834,419 @@ function renderTabBar(){
 // title sync
 document.addEventListener('DOMContentLoaded',()=>{
   const ti=document.getElementById('project-title-input');
-  if(ti)ti.addEventListener('input',()=>{if(tab())tab().title=ti.value;renderTabBar();saveToFirebase();});
+  if(ti)ti.addEventListener('input',()=>{if(tab())tab().title=ti.value;renderTabBar();fbSaveTabMeta();fbSaveTabList();});
 });
 
 // ══════════════════════════════════════════════════
-// FIREBASE
+// FIREBASE — REAL-TIME GRANULAR SYNC
 // ══════════════════════════════════════════════════
 // Firebase 설정 파싱 — JSON / JS객체 / const선언 모두 지원
 function parseFirebaseCfg(input){
   let s=input.trim();
-
-  // const firebaseConfig = { ... }; 에서 값 부분만 추출
   const eqIdx=s.indexOf('=');
-  if(eqIdx!==-1){
-    const after=s.slice(eqIdx+1).trim();
-    if(after.startsWith('{'))s=after;
-  }
-
-  // 끝의 ; 제거
+  if(eqIdx!==-1){const after=s.slice(eqIdx+1).trim();if(after.startsWith('{'))s=after;}
   s=s.replace(/;\s*$/,'');
-
-  // 중괄호 카운팅으로 첫 번째 완전한 { } 블록 추출
   let depth=0,si=-1,ei=-1;
   for(let i=0;i<s.length;i++){
     if(s[i]==='{'){if(depth===0)si=i;depth++;}
     else if(s[i]==='}'){depth--;if(depth===0){ei=i;break;}}
   }
   if(si!==-1&&ei!==-1)s=s.slice(si,ei+1);
-
-  // 1단계: 표준 JSON 시도
   try{return JSON.parse(s);}catch(e1){}
-
-  // 2단계: 각 줄에서 키에만 따옴표 추가
-  // 키: 줄의 시작 공백 이후 알파벳으로 시작하는 단어, 다음에 콜론
-  const fixed=s.split('\n').map(line=>{
-    return line.replace(/^(\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*:)/, (_,sp,key,col)=>sp+'"'+key+'"'+col);
-  }).join('\n').replace(/,(\s*\})/g,'$1');
-
+  const fixed=s.split('\n').map(line=>line.replace(/^(\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)(\s*:)/,(_,sp,key,col)=>sp+'"'+key+'"'+col)).join('\n').replace(/,(\s*\})/g,'$1');
   return JSON.parse(fixed);
 }
 
-
-function initFirebase(){
-  const cfgStr=localStorage.getItem('wm_fbcfg');
-  if(!cfgStr){setFbStatus('disconnected');return;}
-
-  let fbCfg;
-  try{
-    fbCfg=parseFirebaseCfg(cfgStr);
-  }catch(e){
-    setFbStatus('error');
-    console.error('Firebase config parse error:',e);
-    return;
-  }
-  if(!fbCfg||!fbCfg.databaseURL){
-    setFbStatus('error');
-    console.error('databaseURL missing');
-    return;
-  }
-
-  setFbStatus('connecting');
-
-  // Firebase SDK 확인
-  if(typeof firebase==='undefined'){
-    console.error('Firebase SDK not loaded');
-    setFbStatus('error');
-    return;
-  }
-
-  try{
-    const appName='worldmind';
-    // 기존 앱 정리
-    try{firebase.app(appName).delete();}catch(e){}
-    const app=firebase.initializeApp(fbCfg,appName);
-    fbDb=app.database();
-    fbRef=fbDb.ref('worldmind');
-    fbEnabled=true;
-    setFbStatus('ok');
-
-    fbRef.on('value',snap=>{
-      if(remoteLock)return;
-      const data=snap.val();
-      if(!data)return;
-      mergeRemote(data);
-    },err=>{
-      console.error('Firebase read error:',err.code, err.message);
-      showToast('Firebase 읽기 오류: '+err.message);
-      setFbStatus('error');
-    });
-
-  }catch(e){
-    console.error('Firebase init error:',e.code, e.message, e);
-    showToast('Firebase 오류: '+e.message);
-    setFbStatus('error');
-  }
-}
-
-
 function setFbStatus(s){
   const dot=document.getElementById('fb-dot'),txt=document.getElementById('fb-txt');
-  if(s==='ok')             {dot.className='ok'; txt.textContent='동기화됨';}
-  else if(s==='error')     {dot.className='err';txt.textContent='연결 오류 (F12 콘솔 확인)';}
+  if(s==='ok')             {dot.className='ok';txt.textContent='실시간 동기화';}
+  else if(s==='error')     {dot.className='err';txt.textContent='연결 오류';}
   else if(s==='disconnected'){dot.className='';txt.textContent='오프라인';}
   else if(s==='connecting') {dot.className='';txt.textContent='연결 중…';}
   else                      {dot.className='';txt.textContent=s;}
 }
 
-function mergeRemote(data){
-  if(data.tabs){
-    tabs=data.tabs;
-    tabs.forEach(sanitizeTab);
-    renderTabBar();
-  }
-  if(data.tabs&&!tabs.find(t=>t.id===activeTabId)){
-    activeTabId=tabs[0]?.id;
-    if(activeTabId)document.getElementById('project-title-input').value=tab().title;
-  }
-  renderAll();
+// ── Path helper ──
+function fbP(path){return fbRef.child(path);}
+
+// ══════════════════════════════════════════════════
+// FB WRITE FUNCTIONS (granular per-item)
+// ══════════════════════════════════════════════════
+function fbSaveNode(node){
+  if(!fbEnabled||!fbRef||!activeTabId||fbApplyingRemote)return;
+  const{id,_exp,_aiPreview,...rest}=node;
+  fbP('tabs/'+activeTabId+'/nodes/'+id).set({...rest,_w:FB_SID});
+}
+function fbRemoveNode(nodeId,tabId){
+  if(!fbEnabled||!fbRef)return;
+  fbP('tabs/'+(tabId||activeTabId)+'/nodes/'+nodeId).remove();
+}
+function fbSaveEdge(edge,tabId){
+  if(!fbEnabled||!fbRef||fbApplyingRemote)return;
+  const tid=tabId||activeTabId;if(!tid)return;
+  const{id,_aiPreview,...rest}=edge;
+  fbP('tabs/'+tid+'/edges/'+id).set({...rest,_w:FB_SID});
+}
+function fbRemoveEdge(edgeId,tabId){
+  if(!fbEnabled||!fbRef)return;
+  fbP('tabs/'+(tabId||activeTabId)+'/edges/'+edgeId).remove();
+}
+function fbSaveEvent(ev){
+  if(!fbEnabled||!fbRef||!activeTabId||fbApplyingRemote)return;
+  const{id,...rest}=ev;
+  fbP('tabs/'+activeTabId+'/events/'+id).set({...rest,_w:FB_SID});
+}
+function fbRemoveEvent(evId){
+  if(!fbEnabled||!fbRef||!activeTabId)return;
+  fbP('tabs/'+activeTabId+'/events/'+evId).remove();
+}
+function fbSaveTabMeta(){
+  if(!fbEnabled||!fbRef||!activeTabId||fbApplyingRemote)return;
+  const t=tab();if(!t)return;
+  fbP('tabs/'+activeTabId+'/meta').set({title:t.title,worldPrompt:t.worldPrompt||'',_w:FB_SID});
+}
+function fbSaveTabList(){
+  if(!fbEnabled||!fbRef)return;
+  fbP('tabList').set(tabs.map(t=>({id:t.id,title:t.title})));
+}
+function fbRemoveTab(tabId){
+  if(!fbEnabled||!fbRef)return;
+  fbP('tabs/'+tabId).remove();
 }
 
+// ══════════════════════════════════════════════════
+// FB DIFF-BASED FULL SAVE (called by persist)
+// ══════════════════════════════════════════════════
 function saveToFirebase(){
-  if(!fbEnabled||!fbRef)return;
-  remoteLock=true;
-  fbRef.set({tabs}).then(()=>{
-    setTimeout(()=>remoteLock=false,500);
-    setFbStatus('ok');
-  }).catch(e=>{
-    remoteLock=false;
-    setFbStatus('error');
-    console.error('Firebase save error:',e);
+  if(!fbEnabled||!fbRef||fbApplyingRemote)return;
+  const tid=activeTabId;const t=tab();if(!t||!tid)return;
+  fbSaveTabList();
+  fbSaveTabMeta();
+  const prev=fbLastSnap;
+  // Diff nodes
+  const prevN=prev.nodes||{};const curN={};
+  t.nodes.forEach(n=>{
+    if(n._aiPreview)return;
+    curN[n.id]=true;
+    const p=prevN[n.id];
+    if(!p||p.name!==n.name||p.desc!==(n.desc||'')||p.type!==n.type||Math.abs((p.x||0)-n.x)>1||Math.abs((p.y||0)-n.y)>1){
+      fbSaveNode(n);
+    }
   });
+  Object.keys(prevN).forEach(id=>{if(!curN[id])fbRemoveNode(id);});
+  // Diff edges
+  const prevE=prev.edges||{};const curE={};
+  t.edges.forEach(e=>{
+    if(e._aiPreview)return;
+    curE[e.id]=true;
+    const p=prevE[e.id];
+    if(!p||p.label!==e.label||p.desc!==e.desc||p.from!==e.from||p.to!==e.to||p.isParent!==!!e.isParent){
+      fbSaveEdge(e);
+    }
+  });
+  Object.keys(prevE).forEach(id=>{if(!curE[id])fbRemoveEdge(id);});
+  // Diff events
+  const prevEv=prev.events||{};const curEv={};
+  t.events.forEach(ev=>{
+    curEv[ev.id]=true;
+    const p=prevEv[ev.id];
+    if(!p||p.body!==ev.body||p.time!==ev.time||p.order!==ev.order){
+      fbSaveEvent(ev);
+    }
+  });
+  Object.keys(prevEv).forEach(id=>{if(!curEv[id])fbRemoveEvent(id);});
+  fbTakeSnap();
+  setFbStatus('ok');
+}
+
+// ── Snapshot for diff ──
+function fbTakeSnap(){
+  const t=tab();if(!t){fbLastSnap={};return;}
+  const snap={nodes:{},edges:{},events:{}};
+  t.nodes.forEach(n=>{if(!n._aiPreview)snap.nodes[n.id]={type:n.type,name:n.name,desc:n.desc||'',x:n.x,y:n.y};});
+  t.edges.forEach(e=>{if(!e._aiPreview)snap.edges[e.id]={from:e.from,to:e.to,label:e.label||'',desc:e.desc||'',isParent:!!e.isParent};});
+  t.events.forEach(ev=>{snap.events[ev.id]={time:ev.time||'',body:ev.body||'',order:ev.order||0};});
+  fbLastSnap=snap;
+}
+
+// ══════════════════════════════════════════════════
+// FB LISTENERS — per-tab real-time sync
+// ══════════════════════════════════════════════════
+function fbAttachTab(tabId){
+  fbDetachTab();
+  if(!fbEnabled||!fbRef||!tabId)return;
+  const nRef=fbP('tabs/'+tabId+'/nodes');
+  const eRef=fbP('tabs/'+tabId+'/edges');
+  const evRef=fbP('tabs/'+tabId+'/events');
+  const mRef=fbP('tabs/'+tabId+'/meta');
+
+  function listen(ref,event,handler){
+    const cb=ref.on(event,handler,err=>console.error('FB listen err:',err));
+    fbListenerCleanups.push(()=>ref.off(event,cb));
+  }
+
+  // Meta
+  listen(mRef,'value',snap=>{
+    const d=snap.val();if(!d||d._w===FB_SID)return;
+    const t=tabs.find(tb=>tb.id===tabId);if(!t)return;
+    fbApplyingRemote=true;
+    if(d.title&&d.title!==t.title){t.title=d.title;if(tabId===activeTabId)document.getElementById('project-title-input').value=t.title;renderTabBar();}
+    if(d.worldPrompt!==undefined)t.worldPrompt=d.worldPrompt;
+    fbApplyingRemote=false;
+  });
+
+  // Nodes added/changed
+  listen(nRef,'child_added',snap=>fbApplyNode(tabId,snap));
+  listen(nRef,'child_changed',snap=>fbApplyNode(tabId,snap));
+  listen(nRef,'child_removed',snap=>{
+    const d=snap.val();if(d&&d._w===FB_SID)return;
+    const t=tabs.find(tb=>tb.id===tabId);if(!t)return;
+    fbApplyingRemote=true;
+    const had=t.nodes.find(n=>n.id===snap.key);
+    t.nodes=t.nodes.filter(n=>n.id!==snap.key);
+    t.edges=t.edges.filter(e=>e.from!==snap.key&&e.to!==snap.key);
+    if(had&&tabId===activeTabId)renderAll();
+    fbApplyingRemote=false;
+    fbTakeSnap();
+  });
+
+  // Edges added/changed
+  listen(eRef,'child_added',snap=>fbApplyEdge(tabId,snap));
+  listen(eRef,'child_changed',snap=>fbApplyEdge(tabId,snap));
+  listen(eRef,'child_removed',snap=>{
+    const d=snap.val();if(d&&d._w===FB_SID)return;
+    const t=tabs.find(tb=>tb.id===tabId);if(!t)return;
+    fbApplyingRemote=true;
+    t.edges=t.edges.filter(e=>e.id!==snap.key);
+    if(tabId===activeTabId)renderAll();
+    fbApplyingRemote=false;
+    fbTakeSnap();
+  });
+
+  // Events added/changed
+  listen(evRef,'child_added',snap=>fbApplyEvent(tabId,snap));
+  listen(evRef,'child_changed',snap=>fbApplyEvent(tabId,snap));
+  listen(evRef,'child_removed',snap=>{
+    const d=snap.val();if(d&&d._w===FB_SID)return;
+    const t=tabs.find(tb=>tb.id===tabId);if(!t)return;
+    fbApplyingRemote=true;
+    t.events=t.events.filter(e=>e.id!==snap.key);
+    if(tabId===activeTabId&&activePanel==='events')refreshEventsList();
+    fbApplyingRemote=false;
+    fbTakeSnap();
+  });
+}
+
+function fbApplyNode(tabId,snap){
+  const d=snap.val();if(!d||d._w===FB_SID)return;
+  const t=tabs.find(tb=>tb.id===tabId);if(!t)return;
+  fbApplyingRemote=true;
+  const ex=t.nodes.find(n=>n.id===snap.key);
+  if(ex){
+    ex.type=d.type||ex.type;ex.name=d.name||ex.name;
+    ex.desc=d.desc!==undefined?d.desc:ex.desc;
+    ex.x=d.x!==undefined?d.x:ex.x;ex.y=d.y!==undefined?d.y:ex.y;
+  }else{
+    t.nodes.push({id:snap.key,type:d.type||'custom',name:d.name||'',desc:d.desc||'',x:d.x||2000,y:d.y||2000});
+  }
+  if(tabId===activeTabId)renderAll();
+  fbApplyingRemote=false;
+  fbTakeSnap();
+}
+
+function fbApplyEdge(tabId,snap){
+  const d=snap.val();if(!d||d._w===FB_SID)return;
+  const t=tabs.find(tb=>tb.id===tabId);if(!t)return;
+  fbApplyingRemote=true;
+  const ex=t.edges.find(e=>e.id===snap.key);
+  if(ex){
+    ex.from=d.from||ex.from;ex.to=d.to||ex.to;
+    ex.label=d.label!==undefined?d.label:ex.label;
+    ex.desc=d.desc!==undefined?d.desc:ex.desc;
+    ex.isParent=d.isParent!==undefined?d.isParent:ex.isParent;
+  }else{
+    t.edges.push({id:snap.key,from:d.from,to:d.to,label:d.label||'',desc:d.desc||'',isParent:!!d.isParent});
+  }
+  if(tabId===activeTabId)renderAll();
+  fbApplyingRemote=false;
+  fbTakeSnap();
+}
+
+function fbApplyEvent(tabId,snap){
+  const d=snap.val();if(!d||d._w===FB_SID)return;
+  const t=tabs.find(tb=>tb.id===tabId);if(!t)return;
+  fbApplyingRemote=true;
+  const ex=t.events.find(e=>e.id===snap.key);
+  if(ex){
+    ex.time=d.time!==undefined?d.time:ex.time;
+    ex.body=d.body!==undefined?d.body:ex.body;
+    ex.order=d.order!==undefined?d.order:ex.order;
+  }else{
+    t.events.push({id:snap.key,time:d.time||'',body:d.body||'',order:d.order||0});
+  }
+  if(tabId===activeTabId&&activePanel==='events')refreshEventsList();
+  fbApplyingRemote=false;
+  fbTakeSnap();
+}
+
+function fbDetachTab(){
+  fbListenerCleanups.forEach(fn=>fn());
+  fbListenerCleanups=[];
+}
+
+// ══════════════════════════════════════════════════
+// FB INIT + MIGRATION + TAB LIST LISTENER
+// ══════════════════════════════════════════════════
+async function initFirebase(){
+  const cfgStr=localStorage.getItem('wm_fbcfg');
+  if(!cfgStr){setFbStatus('disconnected');return;}
+  let fbCfg;
+  try{fbCfg=parseFirebaseCfg(cfgStr);}catch(e){setFbStatus('error');console.error('Config parse error:',e);return;}
+  if(!fbCfg||!fbCfg.databaseURL){setFbStatus('error');return;}
+  setFbStatus('connecting');
+  if(typeof firebase==='undefined'){setFbStatus('error');return;}
+  try{
+    const appName='worldmind';
+    try{firebase.app(appName).delete();}catch(e){}
+    const app=firebase.initializeApp(fbCfg,appName);
+    fbDb=app.database();
+    fbRef=fbDb.ref('worldmind');
+    fbEnabled=true;
+
+    // Check for old format → migrate
+    const rootSnap=await fbRef.once('value');
+    const rootData=rootSnap.val();
+    if(rootData&&rootData.tabs&&Array.isArray(rootData.tabs)){
+      console.log('Old format detected, migrating…');
+      await fbMigrateOld(rootData.tabs);
+    }
+
+    // Load from Firebase
+    await fbLoadAll();
+
+    // Tab list listener — detect add/remove from other clients
+    fbP('tabList').on('value',snap=>{
+      const list=snap.val();
+      if(!list||!Array.isArray(list))return;
+      const remoteIds=new Set(list.map(t=>t.id));
+      const localIds=new Set(tabs.map(t=>t.id));
+      let changed=false;
+      // Remote added tabs
+      list.forEach(tInfo=>{
+        if(!localIds.has(tInfo.id)){
+          tabs.push({id:tInfo.id,title:tInfo.title||'세계관',nodes:[],edges:[],events:[],worldPrompt:'',refImages:[]});
+          fbLoadSingleTab(tInfo.id);
+          changed=true;
+        }
+      });
+      // Remote removed tabs
+      const before=tabs.length;
+      tabs=tabs.filter(t=>remoteIds.has(t.id));
+      if(tabs.length!==before)changed=true;
+      if(changed){
+        if(!tabs.find(t=>t.id===activeTabId)&&tabs.length)switchTab(tabs[0].id);
+        else renderTabBar();
+      }
+    });
+
+    // Attach listeners for active tab
+    if(activeTabId)fbAttachTab(activeTabId);
+    setFbStatus('ok');
+    saveLocal();
+  }catch(e){
+    console.error('Firebase init error:',e);
+    setFbStatus('error');
+  }
+}
+
+// ── Migration: old array format → new per-item format ──
+async function fbMigrateOld(oldTabs){
+  const updates={};
+  updates['tabList']=oldTabs.map(t=>({id:t.id,title:t.title}));
+  oldTabs.forEach(t=>{
+    sanitizeTab(t);
+    updates['tabs/'+t.id+'/meta']={title:t.title,worldPrompt:t.worldPrompt||'',_w:FB_SID};
+    t.nodes.forEach(n=>{
+      updates['tabs/'+t.id+'/nodes/'+n.id]={type:n.type,name:n.name,desc:n.desc||'',x:n.x,y:n.y,_w:FB_SID};
+    });
+    t.edges.forEach(e=>{
+      updates['tabs/'+t.id+'/edges/'+e.id]={from:e.from,to:e.to,label:e.label||'',desc:e.desc||'',isParent:!!e.isParent,_w:FB_SID};
+    });
+    t.events.forEach(ev=>{
+      updates['tabs/'+t.id+'/events/'+ev.id]={time:ev.time||'',body:ev.body||'',order:ev.order||0,_w:FB_SID};
+    });
+  });
+  // Clear old + write new in one update
+  await fbRef.set(null);
+  await fbRef.update(updates);
+  console.log('Migration complete:',oldTabs.length,'tabs');
+}
+
+// ── Load all tabs from new format ──
+async function fbLoadAll(){
+  const tabListSnap=await fbP('tabList').once('value');
+  const tabList=tabListSnap.val();
+  if(!tabList||!tabList.length){
+    // No data in Firebase — push local data up
+    if(tabs.length){
+      saveToFirebase();
+    }
+    return;
+  }
+  // Rebuild tabs from Firebase
+  const newTabs=[];
+  for(const tInfo of tabList){
+    const metaSnap=await fbP('tabs/'+tInfo.id+'/meta').once('value');
+    const meta=metaSnap.val()||{};
+    const nodesSnap=await fbP('tabs/'+tInfo.id+'/nodes').once('value');
+    const edgesSnap=await fbP('tabs/'+tInfo.id+'/edges').once('value');
+    const eventsSnap=await fbP('tabs/'+tInfo.id+'/events').once('value');
+    const nodesObj=nodesSnap.val()||{};
+    const edgesObj=edgesSnap.val()||{};
+    const eventsObj=eventsSnap.val()||{};
+    newTabs.push({
+      id:tInfo.id,
+      title:meta.title||tInfo.title||'세계관',
+      worldPrompt:meta.worldPrompt||'',
+      refImages:[],
+      nodes:Object.entries(nodesObj).map(([id,n])=>({id,type:n.type||'custom',name:n.name||'',desc:n.desc||'',x:n.x||2000,y:n.y||2000})),
+      edges:Object.entries(edgesObj).map(([id,e])=>({id,from:e.from,to:e.to,label:e.label||'',desc:e.desc||'',isParent:!!e.isParent})),
+      events:Object.entries(eventsObj).map(([id,ev])=>({id,time:ev.time||'',body:ev.body||'',order:ev.order||0}))
+    });
+  }
+  if(newTabs.length){
+    // Preserve local refImages (not synced)
+    const localImgMap={};
+    tabs.forEach(t=>{if(t.refImages&&t.refImages.some(Boolean))localImgMap[t.id]=t.refImages;});
+    tabs=newTabs;
+    tabs.forEach(t=>{if(localImgMap[t.id])t.refImages=localImgMap[t.id];});
+    if(!tabs.find(t=>t.id===activeTabId))activeTabId=tabs[0].id;
+    document.getElementById('project-title-input').value=tab().title;
+    renderTabBar();renderAll();
+    fbTakeSnap();
+  }
+}
+
+// ── Load a single tab added by another client ──
+async function fbLoadSingleTab(tabId){
+  try{
+    const metaSnap=await fbP('tabs/'+tabId+'/meta').once('value');
+    const meta=metaSnap.val()||{};
+    const nodesSnap=await fbP('tabs/'+tabId+'/nodes').once('value');
+    const edgesSnap=await fbP('tabs/'+tabId+'/edges').once('value');
+    const eventsSnap=await fbP('tabs/'+tabId+'/events').once('value');
+    const t=tabs.find(tb=>tb.id===tabId);
+    if(!t)return;
+    t.title=meta.title||t.title;
+    t.worldPrompt=meta.worldPrompt||'';
+    const nodesObj=nodesSnap.val()||{};
+    const edgesObj=edgesSnap.val()||{};
+    const eventsObj=eventsSnap.val()||{};
+    t.nodes=Object.entries(nodesObj).map(([id,n])=>({id,type:n.type||'custom',name:n.name||'',desc:n.desc||'',x:n.x||2000,y:n.y||2000}));
+    t.edges=Object.entries(edgesObj).map(([id,e])=>({id,from:e.from,to:e.to,label:e.label||'',desc:e.desc||'',isParent:!!e.isParent}));
+    t.events=Object.entries(eventsObj).map(([id,ev])=>({id,time:ev.time||'',body:ev.body||'',order:ev.order||0}));
+    renderTabBar();if(tabId===activeTabId)renderAll();
+  }catch(e){console.error('Load tab error:',e);}
 }
 
 // ══════════════════════════════════════════════════
@@ -1740,22 +2088,30 @@ tempId: t1,t2,t3… existingLinks: 기존노드→새노드 연결.`;
 
   try{
     const text=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}],maxTokens:3000});
-    let jsonStr=text;
-    const jsonMatch=text.match(/\{[\s\S]*\}/);
-    if(jsonMatch)jsonStr=jsonMatch[0];
+    // ── 1단계: 브래킷 카운팅으로 정확한 JSON 블록 추출 ──
+    let jsonStr=extractJSON(text);
+    if(!jsonStr)jsonStr=text;
 
     let result;
     try{
       result=JSON.parse(repairJSON(jsonStr));
     }catch(pe){
-      // 2차 시도: 잘린 nodes 배열만이라도 추출
-      console.warn('Full JSON parse failed, trying partial recovery…',pe.message);
-      const nodesMatch=jsonStr.match(/"nodes"\s*:\s*\[([\s\S]*?)\]/);
-      if(nodesMatch){
-        const partialNodes=JSON.parse(repairJSON('['+nodesMatch[1]+']'));
-        result={nodes:partialNodes,edges:[],existingLinks:[]};
-      }else{
-        throw pe;
+      // ── 2차: markdown 코드펜스 제거 후 재시도 ──
+      console.warn('1st parse failed, trying cleanup…',pe.message);
+      const cleaned=text.replace(/```(?:json)?\s*/g,'').replace(/```\s*/g,'').trim();
+      const jsonStr2=extractJSON(cleaned);
+      if(jsonStr2){
+        try{result=JSON.parse(repairJSON(jsonStr2));}catch(pe2){console.warn('2nd parse also failed:',pe2.message);}
+      }
+      // ── 3차: nodes 배열만이라도 부분 복구 ──
+      if(!result){
+        console.warn('Trying partial node recovery…');
+        const partialNodes=extractPartialNodes(text);
+        if(partialNodes.length){
+          result={nodes:partialNodes,edges:[],existingLinks:[]};
+        }else{
+          throw pe;
+        }
       }
     }
 
@@ -1931,8 +2287,8 @@ function startApp(){
   if(localStorage.getItem('wm_fbcfg')){setFbStatus('connecting');}
   else{setFbStatus('disconnected');}
   init();
-  // 자동 저장 — 앱 시작 후에만 실행
-  setInterval(()=>{saveLocal();if(fbEnabled)saveToFirebase();},60000);
+  // 주기적 localStorage 저장 (Firebase는 변경 시 즉시 동기화)
+  setInterval(()=>{saveLocal();},60000);
 }
 document.addEventListener('DOMContentLoaded',()=>{
   window.__domReady=true;
