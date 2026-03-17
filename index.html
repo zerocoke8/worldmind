@@ -307,6 +307,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
   <div class="tb-sep"></div>
   <button class="tb-btn" onclick="openAddPanel()">＋ 노드</button>
   <button class="tb-btn ai-gen-btn" onclick="openAIGenModal()">✨ AI 노드</button>
+  <button class="tb-btn" onclick="autoLayout()" title="노드 자동 정렬">🔀 정렬</button>
   <div id="fb-status"><div id="fb-dot"></div><span id="fb-txt">오프라인</span></div>
   <div id="tb-spacer"></div>
   <div id="readonly-badge" onclick="openLoginModal()" title="클릭하여 편집 모드 전환">🔒 보기 전용</div>
@@ -2305,6 +2306,152 @@ function closeAIGen(){
   hideConfirmPanel();
   aiGenPending=null;
   renderAll();
+}
+
+// ══════════════════════════════════════════════════
+// AUTO LAYOUT — Hierarchical Tree + Force Repulsion
+// ══════════════════════════════════════════════════
+function autoLayout(){
+  const ns=nodes();const es=edges();
+  if(!ns.length){showToast('정렬할 노드가 없습니다');return;}
+
+  // ── 1. Build parent tree ──
+  const parentOf={};   // nodeId → parentId
+  const childrenOf={}; // nodeId → [childIds]
+  ns.forEach(n=>{childrenOf[n.id]=[];});
+  es.filter(e=>e.isParent).forEach(e=>{
+    if(byId(e.from)&&byId(e.to)){
+      parentOf[e.to]=e.from;
+      if(childrenOf[e.from])childrenOf[e.from].push(e.to);
+    }
+  });
+
+  // ── 2. Find roots (no parent) ──
+  const roots=ns.filter(n=>!parentOf[n.id]);
+
+  // ── 3. Compute subtree sizes ──
+  const subtreeSize={};
+  function calcSize(id){
+    const ch=childrenOf[id]||[];
+    if(!ch.length){subtreeSize[id]=1;return 1;}
+    let s=0;ch.forEach(c=>s+=calcSize(c));
+    subtreeSize[id]=s;return s;
+  }
+  roots.forEach(r=>calcSize(r.id));
+  // Handle orphans (no tree connection at all)
+  ns.forEach(n=>{if(subtreeSize[n.id]===undefined)subtreeSize[n.id]=1;});
+
+  // ── 4. Hierarchical layout per tree ──
+  const NODE_W=200,NODE_H=90,LEVEL_H=160,SIBLING_GAP=30;
+  const positions={};  // nodeId → {x, y}
+  let treeOffsetX=0;
+
+  // Separate nodes into: tree roots, connected-but-not-in-tree, isolated
+  const inTree=new Set();
+  function markTree(id){inTree.add(id);(childrenOf[id]||[]).forEach(c=>markTree(c));}
+  roots.forEach(r=>markTree(r.id));
+
+  // Non-parent edges: nodes connected but not via parent
+  const connectedIds=new Set();
+  es.forEach(e=>{if(byId(e.from))connectedIds.add(e.from);if(byId(e.to))connectedIds.add(e.to);});
+  const isolated=ns.filter(n=>!inTree.has(n.id)&&!connectedIds.has(n.id));
+  const connectedNonTree=ns.filter(n=>!inTree.has(n.id)&&connectedIds.has(n.id));
+
+  // Layout each tree hierarchically
+  function layoutTree(rootId,offsetX){
+    let x=offsetX;
+    function lay(id,depth){
+      const ch=childrenOf[id]||[];
+      if(!ch.length){
+        positions[id]={x:x,y:depth*LEVEL_H};
+        x+=NODE_W+SIBLING_GAP;
+        return;
+      }
+      ch.forEach(c=>lay(c,depth+1));
+      // center parent above children
+      const firstChild=positions[ch[0]];
+      const lastChild=positions[ch[ch.length-1]];
+      positions[id]={x:(firstChild.x+lastChild.x)/2,y:depth*LEVEL_H};
+    }
+    lay(rootId,0);
+    return x;
+  }
+
+  roots.forEach(r=>{
+    treeOffsetX=layoutTree(r.id,treeOffsetX);
+    treeOffsetX+=NODE_W; // gap between trees
+  });
+
+  // ── 5. Place connected-non-tree nodes using force from their connections ──
+  connectedNonTree.forEach((n,i)=>{
+    // Average position of connected nodes that are already placed
+    const connected=es.filter(e=>e.from===n.id||e.to===n.id)
+      .map(e=>e.from===n.id?e.to:e.from)
+      .filter(id=>positions[id]);
+    if(connected.length){
+      const avgX=connected.reduce((s,id)=>s+positions[id].x,0)/connected.length;
+      const avgY=connected.reduce((s,id)=>s+positions[id].y,0)/connected.length;
+      positions[n.id]={x:avgX+NODE_W+40,y:avgY+(i%2===0?-60:60)};
+    }else{
+      positions[n.id]={x:treeOffsetX,y:i*NODE_H};
+      treeOffsetX+=NODE_W+SIBLING_GAP;
+    }
+  });
+
+  // ── 6. Place isolated nodes in a grid below ──
+  if(isolated.length){
+    const cols=Math.ceil(Math.sqrt(isolated.length));
+    const maxY=Object.values(positions).reduce((m,p)=>Math.max(m,p.y),0);
+    const gridStartY=maxY+LEVEL_H+80;
+    isolated.forEach((n,i)=>{
+      const row=Math.floor(i/cols);
+      const col=i%cols;
+      positions[n.id]={x:col*(NODE_W+SIBLING_GAP),y:gridStartY+row*(NODE_H+SIBLING_GAP)};
+    });
+  }
+
+  // ── 7. Force repulsion (overlap removal, 20 iterations) ──
+  const allIds=Object.keys(positions);
+  for(let iter=0;iter<20;iter++){
+    for(let i=0;i<allIds.length;i++){
+      for(let j=i+1;j<allIds.length;j++){
+        const a=positions[allIds[i]],b=positions[allIds[j]];
+        let dx=b.x-a.x,dy=b.y-a.y;
+        const dist=Math.sqrt(dx*dx+dy*dy)||1;
+        const minDist=NODE_W+20;
+        if(dist<minDist){
+          const force=(minDist-dist)/2;
+          const fx=(dx/dist)*force,fy=(dy/dist)*force;
+          a.x-=fx;a.y-=fy;
+          b.x+=fx;b.y+=fy;
+        }
+      }
+    }
+  }
+
+  // ── 8. Normalize: shift so minimum is at (100, 100) ──
+  const allPos=Object.values(positions);
+  if(!allPos.length)return;
+  const minX=Math.min(...allPos.map(p=>p.x));
+  const minY=Math.min(...allPos.map(p=>p.y));
+  allIds.forEach(id=>{positions[id].x-=minX-100;positions[id].y-=minY-100;});
+
+  // ── 9. Animate to new positions ──
+  ns.forEach(n=>{
+    const p=positions[n.id];
+    if(!p)return;
+    const el=document.getElementById('node-'+n.id);
+    if(el){
+      el.style.transition='left .5s ease, top .5s ease';
+      el.style.left=p.x+'px';
+      el.style.top=p.y+'px';
+      setTimeout(()=>el.style.transition='',600);
+    }
+    n.x=p.x;n.y=p.y;
+  });
+
+  setTimeout(()=>{renderEdges();persist();setTimeout(zoomFit,100);},550);
+  showToast('노드가 정렬되었습니다 ✓');
 }
 
 // ══════════════════════════════════════════════════
