@@ -256,22 +256,33 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
 .gen-loading-text{font-size:12px;color:var(--text3);animation:pulse-text 1.5s ease-in-out infinite}
 @keyframes pulse-text{0%,100%{opacity:.5}50%{opacity:1}}
 
-/* ── AI PREVIEW MODAL ── */
-#ai-preview-modal .modal{width:680px;max-height:85vh}
-.preview-summary{display:flex;gap:12px;margin-bottom:16px}
-.preview-stat{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;text-align:center}
-.preview-stat .ps-num{font-size:24px;font-weight:700;font-family:'Cinzel',serif}
-.preview-stat .ps-label{font-size:11px;color:var(--text3);margin-top:4px}
-.preview-nodes{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:14px;padding-right:4px}
-.pv-node{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;transition:border-color .15s}
-.pv-node:hover{border-color:var(--border2)}
-.pv-type-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
-.pv-info{flex:1;min-width:0}
-.pv-name{font-size:13px;font-weight:700;color:var(--text)}
-.pv-desc{font-size:11px;color:var(--text2);margin-top:3px;line-height:1.5}
-.pv-edges{font-size:10px;color:var(--text3);margin-top:5px;display:flex;flex-wrap:wrap;gap:4px}
-.pv-edge-tag{background:rgba(124,106,247,.12);border:1px solid rgba(124,106,247,.2);border-radius:4px;padding:2px 6px;white-space:nowrap}
-.pv-section-title{font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;padding-left:2px}
+/* ── AI PREVIEW ON CANVAS ── */
+.node.ai-preview{border-width:2.5px;animation:ai-preview-pulse 2s ease-in-out infinite;z-index:15}
+.node.ai-preview .node-name{font-weight:900;font-size:14px}
+.node.ai-preview .node-type-badge{font-weight:800;opacity:.85}
+@keyframes ai-preview-pulse{0%,100%{box-shadow:0 0 8px rgba(124,106,247,.3),0 0 20px rgba(124,106,247,.15)}50%{box-shadow:0 0 14px rgba(124,106,247,.6),0 0 36px rgba(124,106,247,.25)}}
+.edge-path.ai-preview-edge{stroke-width:2.8;opacity:.8;animation:ai-edge-pulse 2s ease-in-out infinite}
+@keyframes ai-edge-pulse{0%,100%{opacity:.6}50%{opacity:1}}
+
+/* ── AI CONFIRM PANEL ── */
+#ai-confirm-panel{position:fixed;bottom:20px;right:20px;z-index:1400;background:var(--bg3);border:1.5px solid var(--accent);border-radius:14px;padding:16px 20px;width:320px;box-shadow:0 12px 48px rgba(124,106,247,.3),0 4px 16px rgba(0,0,0,.5);display:none;backdrop-filter:blur(16px);transition:right .25s}
+#ai-confirm-panel.visible{display:block;animation:acp-in .3s ease-out}
+#ai-confirm-panel.has-panel{right:calc(var(--rp-w) + 20px)}
+@keyframes acp-in{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.acp-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.acp-title{font-family:'Cinzel',serif;font-size:15px;color:var(--gold2);flex:1}
+.acp-stats{display:flex;gap:12px;margin-bottom:12px}
+.acp-stat{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2)}
+.acp-stat b{font-size:16px;font-family:'Cinzel',serif}
+.acp-msg{font-size:13px;color:var(--text);text-align:center;margin-bottom:14px;line-height:1.5}
+.acp-btns{display:flex;gap:8px}
+.acp-btns .btn{flex:1;font-size:12px;text-align:center;padding:9px 10px}
+
+/* ── AI CANVAS LOADING ── */
+#ai-canvas-loading{position:fixed;top:84px;left:0;right:0;bottom:0;z-index:1200;background:rgba(10,11,15,.6);display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px;backdrop-filter:blur(2px)}
+#ai-canvas-loading.visible{display:flex}
+#ai-canvas-loading .ld span{width:10px;height:10px}
+.acl-text{font-size:14px;color:var(--text2);animation:pulse-text 1.5s ease-in-out infinite}
 
 /* ── TAB CLOSE CONFIRM ── */
 #tab-confirm-modal .modal{width:360px;text-align:center}
@@ -525,19 +536,23 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
   </div>
 </div>
 
-<!-- AI PREVIEW MODAL -->
-<div id="ai-preview-modal" class="modal-overlay hidden">
-  <div class="modal">
-    <h2>🔍 생성 결과 미리보기</h2>
-    <div class="preview-summary" id="preview-summary"></div>
-    <div class="pv-section-title">생성될 노드 및 관계</div>
-    <div class="preview-nodes" id="preview-nodes"></div>
-    <p style="font-size:13px;color:var(--text2);text-align:center;margin-bottom:4px">이대로 생성하시겠습니까?</p>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeAIPreview()">취소</button>
-      <button class="btn btn-ghost" onclick="retryAIGen()" style="border-color:var(--accent);color:var(--accent2)">↻ 다시 생성</button>
-      <button class="btn btn-primary" onclick="confirmAIGen()">✓ 생성 확정</button>
-    </div>
+<!-- AI CANVAS LOADING -->
+<div id="ai-canvas-loading">
+  <div class="ld"><span></span><span></span><span></span></div>
+  <div class="acl-text">세계관을 구축하고 있습니다…</div>
+</div>
+
+<!-- AI CONFIRM PANEL -->
+<div id="ai-confirm-panel">
+  <div class="acp-header">
+    <span class="acp-title">✨ AI 생성 완료</span>
+  </div>
+  <div class="acp-stats" id="acp-stats"></div>
+  <div class="acp-msg">이대로 추가하시겠습니까?</div>
+  <div class="acp-btns">
+    <button class="btn btn-ghost" onclick="closeAIGen()">닫기</button>
+    <button class="btn btn-ghost" onclick="retryAIGen()" style="border-color:var(--accent);color:var(--accent2)">↻ 다시 생성</button>
+    <button class="btn btn-primary" onclick="confirmAIGen()">추가하기</button>
   </div>
 </div>
 
@@ -600,17 +615,37 @@ async function callAnthropicAPI({system,messages,maxTokens=800}){
 // ── 잘린 JSON 복구 헬퍼 ──
 function repairJSON(s){
   let str=s.trim();
+  // 문자열 내부 이스케이프 안된 개행 제거
+  str=str.replace(/(?<=":[ ]*"[^"]*)\n/g,' ');
+  // 잘린 문자열 값 닫기: "key":"value 로 끝나는 경우
+  str=str.replace(/"([^"]*?)$/,'"$1"');
   // 열린 따옴표 닫기
-  const quotes=(str.match(/"/g)||[]).length;
-  if(quotes%2!==0)str+='"';
+  let inStr=false,esc=false;
+  for(let i=0;i<str.length;i++){
+    if(esc){esc=false;continue;}
+    if(str[i]==='\\'){esc=true;continue;}
+    if(str[i]==='"')inStr=!inStr;
+  }
+  if(inStr)str+='"';
+  // 값 없는 마지막 키 제거 ("key": 또는 "key":  로 끝남)
+  str=str.replace(/,\s*"[^"]*"\s*:\s*$/,'');
+  // 불완전한 마지막 객체 제거 (배열 내 잘린 객체)
+  str=str.replace(/,\s*\{[^}]*$/,'');
+  // 마지막 콤마 제거
+  str=str.replace(/,\s*$/,'');
   // 누락된 닫는 중괄호/대괄호 추가
   let braces=0,brackets=0;
-  for(const c of str){if(c==='{')braces++;else if(c==='}')braces--;else if(c==='[')brackets++;else if(c===']')brackets--;}
-  // 마지막 값이 누락된 경우 처리 (예: "order": 로 끝남)
-  str=str.replace(/,\s*"[^"]*"\s*:\s*$/,'');  // 값 없는 마지막 키 제거
-  str=str.replace(/,\s*$/,'');                 // 마지막 콤마 제거
-  while(braces-->0)str+='}';
+  let inStr2=false,esc2=false;
+  for(let i=0;i<str.length;i++){
+    if(esc2){esc2=false;continue;}
+    if(str[i]==='\\'){esc2=true;continue;}
+    if(str[i]==='"'){inStr2=!inStr2;continue;}
+    if(inStr2)continue;
+    if(str[i]==='{')braces++;else if(str[i]==='}')braces--;
+    else if(str[i]==='[')brackets++;else if(str[i]===']')brackets--;
+  }
   while(brackets-->0)str+=']';
+  while(braces-->0)str+='}';
   return str;
 }
 
@@ -1007,7 +1042,7 @@ function renderEdges(){
     const cc=`ec-${from.type||'custom'}`;const isSel=edge.id===selEdgeId;
 
     const hit=mkSvg('path');hit.setAttribute('d',d);hit.setAttribute('class','edge-hit');hit.dataset.eid=edge.id;svg.appendChild(hit);
-    const path=mkSvg('path');path.setAttribute('d',d);path.setAttribute('class',`edge-path ${cc}${isSel?' sel':''}`);path.setAttribute('stroke-dasharray',edge.isParent?'none':'6 3');path.dataset.eid=edge.id;svg.appendChild(path);
+    const path=mkSvg('path');path.setAttribute('d',d);path.setAttribute('class',`edge-path ${cc}${isSel?' sel':''}${edge._aiPreview?' ai-preview-edge':''}`);path.setAttribute('stroke-dasharray',edge.isParent?'none':'6 3');path.dataset.eid=edge.id;svg.appendChild(path);
 
     if(edge.label){
       const lw=Math.max(edge.label.length*7+16,44),lh=18;
@@ -1037,7 +1072,7 @@ function renderNodes(){
   canvas.querySelectorAll('.node').forEach(el=>el.remove());
   nodes().forEach(node=>{
     const el=document.createElement('div');
-    el.className=`node type-${node.type}`;el.id='node-'+node.id;
+    el.className=`node type-${node.type}${node._aiPreview?' ai-preview':''}`;el.id='node-'+node.id;
     el.style.left=node.x+'px';el.style.top=node.y+'px';
     if(selNodeId===node.id)el.classList.add('selected');
     el.innerHTML=`<div class="node-type-badge">${TI[node.type]||'📌'} ${TL[node.type]}</div><div class="node-name">${esc(node.name)}</div><div class="node-desc${node._exp?' visible':''}">${esc(node.desc||'설명 없음')}</div>`;
@@ -1659,8 +1694,10 @@ function protagonistSaveEvent(){
 // ══════════════════════════════════════════════════
 // AI WORLD GENERATION
 // ══════════════════════════════════════════════════
-let aiGenPending=null; // stores generated data before confirm
-let aiGenPromptText=''; // stores the prompt for retry
+let aiGenPending=null;    // {nodes, edges, existingLinks, ...} raw AI result
+let aiGenPromptText='';   // for retry
+let aiPreviewIds=[];      // real node IDs placed on canvas as preview
+let aiPreviewEdgeIds=[];  // real edge IDs placed on canvas as preview
 
 function openAIGenModal(){
   if(!isEditMode){showToast('편집 모드에서만 가능합니다');return;}
@@ -1679,140 +1716,82 @@ async function submitAIGen(){
   if(!prompt){showToast('프롬프트를 입력하세요');return;}
   aiGenPromptText=prompt;
 
-  // show loading
-  document.getElementById('ai-gen-loading').style.display='block';
-  document.getElementById('ai-gen-submit').disabled=true;
-  document.getElementById('ai-gen-submit').textContent='생성 중…';
+  // close modal, show canvas loading
+  closeAIGenModal();
+  removeCanvasPreview();
+  showCanvasLoading(true);
 
   const t=tab();
   const existingNodes=nodes().map(n=>`[${TL[n.type]}]${n.name}`).join(', ');
   const existingEdges=edgeCtx().slice(0,400);
 
-  const sys=`당신은 창작 세계관 빌더입니다. 사용자의 프롬프트를 분석하여 세계관 노드와 관계를 JSON으로 생성합니다.
+  const sys=`창작 세계관 빌더. 프롬프트의 주요 명사를 모두 노드로 만들고 관계를 연결. JSON만 응답.
+규칙: type은 world|group|space|char|item|trait|custom. desc는 1문장. label은 2-4자.
+형식: {"nodes":[{"tempId":"t1","type":"char","name":"이름","desc":"설명"}],"edges":[{"from":"t1","to":"t2","label":"관계명","desc":"설명"}],"existingLinks":[{"fromExisting":"기존노드이름","toNew":"t1","label":"관계명","desc":"설명"}]}
+tempId: t1,t2,t3… existingLinks: 기존노드→새노드 연결.`;
 
-규칙:
-1. 프롬프트에 등장하는 모든 주요 명사(인물명, 장소명, 사물명, 집단명, 개념 등)를 반드시 노드로 만드세요.
-2. 기존 노드가 있으면 새 노드와 자연스럽게 관계를 연결하세요.
-3. 각 노드에 적절한 type을 부여하세요: world(세계/배경), group(집단/조직), space(장소/공간), char(인물), item(사물/아이템), trait(성격/특성), custom(기타)
-4. 관계에는 짧은 label(2-4자)과 desc(상세설명)를 넣으세요.
-5. 노드의 desc는 세계관에 맞는 풍부한 설명을 2-3문장으로 작성하세요.
+  const usr=`세계관: ${(t.worldPrompt||'없음').slice(0,150)}
+기존노드: ${existingNodes.slice(0,300)||'없음'}
+기존관계: ${existingEdges||'없음'}
 
-반드시 아래 JSON 형식으로만 응답하세요:
-{"nodes":[{"tempId":"t1","type":"char","name":"이름","desc":"설명"}],"edges":[{"from":"t1","to":"t2","label":"관계명","desc":"상세설명"}],"existingLinks":[{"fromExisting":"기존노드이름","toNew":"t1","label":"관계명","desc":"상세설명"}]}
+입력: ${prompt}
 
-- tempId는 t1, t2, t3… 형식
-- existingLinks의 fromExisting은 기존 노드의 정확한 이름, toNew는 새 노드의 tempId
-- 기존 노드끼리의 새 관계도 가능: existingToExisting 배열에 {"from":"기존이름A","to":"기존이름B","label":"","desc":""} 추가`;
-
-  const usr=`세계관 프롬프트: ${(t.worldPrompt||'없음').slice(0,200)}
-기존 노드: ${existingNodes||'없음'}
-기존 관계: ${existingEdges||'없음'}
-
-사용자 입력:
-${prompt}
-
-위 내용을 분석하여 노드와 관계를 생성하세요. 프롬프트의 모든 주요 명사를 노드로 만드세요.`;
+모든 주요 명사를 노드로. desc는 짧게 1문장.`;
 
   try{
-    const text=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}],maxTokens:2000});
-    // extract JSON
+    const text=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}],maxTokens:3000});
     let jsonStr=text;
     const jsonMatch=text.match(/\{[\s\S]*\}/);
     if(jsonMatch)jsonStr=jsonMatch[0];
-    const result=JSON.parse(repairJSON(jsonStr));
+
+    let result;
+    try{
+      result=JSON.parse(repairJSON(jsonStr));
+    }catch(pe){
+      // 2차 시도: 잘린 nodes 배열만이라도 추출
+      console.warn('Full JSON parse failed, trying partial recovery…',pe.message);
+      const nodesMatch=jsonStr.match(/"nodes"\s*:\s*\[([\s\S]*?)\]/);
+      if(nodesMatch){
+        const partialNodes=JSON.parse(repairJSON('['+nodesMatch[1]+']'));
+        result={nodes:partialNodes,edges:[],existingLinks:[]};
+      }else{
+        throw pe;
+      }
+    }
 
     if(!result.nodes||!result.nodes.length){
       showToast('노드를 생성하지 못했습니다. 다시 시도해주세요.');
-      resetAIGenUI();return;
+      showCanvasLoading(false);return;
     }
 
     aiGenPending=result;
-    closeAIGenModal();
-    showAIPreview(result);
+    showCanvasLoading(false);
+    placeCanvasPreview(result);
+    showConfirmPanel(result);
   }catch(e){
     console.error('AI Gen error:',e);
     showToast('생성 오류: '+e.message);
-    resetAIGenUI();
+    showCanvasLoading(false);
   }
 }
 
-function resetAIGenUI(){
-  document.getElementById('ai-gen-loading').style.display='none';
-  document.getElementById('ai-gen-submit').disabled=false;
-  document.getElementById('ai-gen-submit').textContent='🚀 생성하기';
+function showCanvasLoading(show){
+  document.getElementById('ai-canvas-loading').classList.toggle('visible',show);
 }
 
-function showAIPreview(result){
-  const nodeCount=result.nodes.length;
-  const edgeCount=(result.edges?.length||0)+(result.existingLinks?.length||0)+(result.existingToExisting?.length||0);
-
-  // summary stats
-  const summaryEl=document.getElementById('preview-summary');
-  const typeCounts={};
-  result.nodes.forEach(n=>{typeCounts[n.type]=(typeCounts[n.type]||0)+1;});
-  summaryEl.innerHTML=`
-    <div class="preview-stat"><div class="ps-num" style="color:var(--accent2)">${nodeCount}</div><div class="ps-label">새 노드</div></div>
-    <div class="preview-stat"><div class="ps-num" style="color:var(--ok)">${edgeCount}</div><div class="ps-label">새 관계</div></div>
-    <div class="preview-stat"><div class="ps-num" style="color:var(--gold2)">${Object.keys(typeCounts).length}</div><div class="ps-label">노드 유형</div></div>
-  `;
-
-  // node list with edges
-  const nodesEl=document.getElementById('preview-nodes');
-  nodesEl.innerHTML='';
-  result.nodes.forEach(n=>{
-    // find edges for this node
-    const relatedEdges=[];
-    (result.edges||[]).forEach(e=>{
-      if(e.from===n.tempId){const target=result.nodes.find(nd=>nd.tempId===e.to);if(target)relatedEdges.push(`→ ${target.name} (${e.label||'관계'})`);}
-      if(e.to===n.tempId){const source=result.nodes.find(nd=>nd.tempId===e.from);if(source)relatedEdges.push(`← ${source.name} (${e.label||'관계'})`);}
-    });
-    (result.existingLinks||[]).forEach(e=>{
-      if(e.toNew===n.tempId)relatedEdges.push(`← ${e.fromExisting} (${e.label||'관계'})`);
-    });
-
-    const col=TC[n.type]||'#5a6090';
-    const card=document.createElement('div');card.className='pv-node';
-    card.innerHTML=`
-      <div class="pv-type-dot" style="background:${col}"></div>
-      <div class="pv-info">
-        <div class="pv-name">${TI[n.type]||'📌'} ${esc(n.name)} <span style="font-size:10px;color:var(--text3);font-weight:400">${TL[n.type]||n.type}</span></div>
-        <div class="pv-desc">${esc(n.desc||'')}</div>
-        ${relatedEdges.length?`<div class="pv-edges">${relatedEdges.map(r=>`<span class="pv-edge-tag">${esc(r)}</span>`).join('')}</div>`:''}
-      </div>`;
-    nodesEl.appendChild(card);
-  });
-
-  document.getElementById('ai-preview-modal').classList.remove('hidden');
-}
-
-function closeAIPreview(){
-  document.getElementById('ai-preview-modal').classList.add('hidden');
-  aiGenPending=null;
-}
-
-function retryAIGen(){
-  closeAIPreview();
-  document.getElementById('ai-gen-prompt').value=aiGenPromptText;
-  document.getElementById('ai-gen-modal').classList.remove('hidden');
-  document.getElementById('ai-gen-loading').style.display='none';
-  document.getElementById('ai-gen-submit').disabled=false;
-  document.getElementById('ai-gen-submit').textContent='🚀 생성하기';
-}
-
-function confirmAIGen(){
-  if(!aiGenPending)return;
-  const result=aiGenPending;
+// ── Place preview nodes/edges on canvas ──
+function placeCanvasPreview(result){
   const t=tab();if(!t)return;
+  aiPreviewIds=[];
+  aiPreviewEdgeIds=[];
 
-  // calculate layout: place new nodes in a radial/grid pattern
-  const existing=nodes();
+  const existing=nodes().filter(n=>!n._aiPreview);
   let cx=2000,cy=2000;
   if(existing.length){
     cx=existing.reduce((s,n)=>s+n.x,0)/existing.length;
     cy=existing.reduce((s,n)=>s+n.y,0)/existing.length;
   }
 
-  // create a tempId→realId map
   const idMap={};
   const count=result.nodes.length;
   const cols=Math.ceil(Math.sqrt(count));
@@ -1821,48 +1800,112 @@ function confirmAIGen(){
     const row=Math.floor(i/cols);
     const col=i%cols;
     const spacing=260;
-    // offset from center, with some jitter
     const baseX=cx+(col-(cols-1)/2)*spacing+(Math.random()*30-15);
     const baseY=cy+(row-(Math.ceil(count/cols)-1)/2)*spacing+200+(Math.random()*30-15);
 
     const realId=gid();
     idMap[n.tempId]=realId;
-    t.nodes.push({id:realId,type:n.type||'custom',name:n.name,desc:n.desc||'',x:baseX,y:baseY});
+    aiPreviewIds.push(realId);
+    t.nodes.push({id:realId,type:n.type||'custom',name:n.name,desc:n.desc||'',x:baseX,y:baseY,_aiPreview:true,_exp:true});
   });
 
-  // add edges between new nodes
+  // edges between new nodes
   (result.edges||[]).forEach(e=>{
     const fromId=idMap[e.from],toId=idMap[e.to];
     if(fromId&&toId){
-      t.edges.push({id:gid(),from:fromId,to:toId,label:e.label||'',desc:e.desc||'',isParent:false});
+      const eid=gid();
+      aiPreviewEdgeIds.push(eid);
+      t.edges.push({id:eid,from:fromId,to:toId,label:e.label||'',desc:e.desc||'',isParent:false,_aiPreview:true});
     }
   });
 
-  // add edges from existing nodes to new nodes
+  // edges from existing to new
   (result.existingLinks||[]).forEach(e=>{
     const existNode=existing.find(n=>n.name===e.fromExisting);
     const newId=idMap[e.toNew];
     if(existNode&&newId){
-      t.edges.push({id:gid(),from:existNode.id,to:newId,label:e.label||'',desc:e.desc||'',isParent:false});
+      const eid=gid();
+      aiPreviewEdgeIds.push(eid);
+      t.edges.push({id:eid,from:existNode.id,to:newId,label:e.label||'',desc:e.desc||'',isParent:false,_aiPreview:true});
     }
   });
 
-  // add edges between existing nodes
+  // edges between existing nodes
   (result.existingToExisting||[]).forEach(e=>{
     const a=existing.find(n=>n.name===e.from);
     const b=existing.find(n=>n.name===e.to);
-    if(a&&b){
-      // check duplicate
-      if(!t.edges.find(ex=>(ex.from===a.id&&ex.to===b.id)||(ex.from===b.id&&ex.to===a.id))){
-        t.edges.push({id:gid(),from:a.id,to:b.id,label:e.label||'',desc:e.desc||'',isParent:false});
-      }
+    if(a&&b&&!t.edges.find(ex=>(ex.from===a.id&&ex.to===b.id)||(ex.from===b.id&&ex.to===a.id))){
+      const eid=gid();
+      aiPreviewEdgeIds.push(eid);
+      t.edges.push({id:eid,from:a.id,to:b.id,label:e.label||'',desc:e.desc||'',isParent:false,_aiPreview:true});
     }
   });
 
-  renderAll();persist();
-  closeAIPreview();
-  showToast(`${count}개 노드가 생성되었습니다 ✓`);
+  renderAll();
   setTimeout(zoomFit,150);
+}
+
+// ── Remove preview nodes/edges ──
+function removeCanvasPreview(){
+  const t=tab();if(!t)return;
+  if(!aiPreviewIds.length&&!aiPreviewEdgeIds.length)return;
+  t.nodes=t.nodes.filter(n=>!n._aiPreview);
+  t.edges=t.edges.filter(e=>!e._aiPreview);
+  aiPreviewIds=[];
+  aiPreviewEdgeIds=[];
+  renderAll();
+}
+
+// ── Show floating confirm panel ──
+function showConfirmPanel(result){
+  const nodeCount=result.nodes.length;
+  const edgeCount=(result.edges?.length||0)+(result.existingLinks?.length||0)+(result.existingToExisting?.length||0);
+  document.getElementById('acp-stats').innerHTML=`
+    <div class="acp-stat"><b style="color:var(--accent2)">${nodeCount}</b> 새 노드</div>
+    <div class="acp-stat"><b style="color:var(--ok)">${edgeCount}</b> 새 관계</div>`;
+  const panel=document.getElementById('ai-confirm-panel');
+  panel.classList.toggle('has-panel',!!activePanel);
+  panel.classList.add('visible');
+}
+
+function hideConfirmPanel(){
+  document.getElementById('ai-confirm-panel').classList.remove('visible');
+}
+
+// ── Confirm: finalize preview nodes ──
+function confirmAIGen(){
+  const t=tab();if(!t)return;
+  const count=aiPreviewIds.length;
+  // remove preview flags → make permanent
+  t.nodes.forEach(n=>{if(n._aiPreview)delete n._aiPreview;});
+  t.edges.forEach(e=>{if(e._aiPreview)delete e._aiPreview;});
+  aiPreviewIds=[];
+  aiPreviewEdgeIds=[];
+  aiGenPending=null;
+  renderAll();persist();
+  hideConfirmPanel();
+  showToast(`${count}개 노드가 추가되었습니다 ✓`);
+}
+
+// ── Retry: remove preview, re-open modal ──
+function retryAIGen(){
+  removeCanvasPreview();
+  hideConfirmPanel();
+  aiGenPending=null;
+  document.getElementById('ai-gen-prompt').value=aiGenPromptText;
+  document.getElementById('ai-gen-loading').style.display='none';
+  document.getElementById('ai-gen-actions').style.display='flex';
+  document.getElementById('ai-gen-submit').disabled=false;
+  document.getElementById('ai-gen-submit').textContent='🚀 생성하기';
+  document.getElementById('ai-gen-modal').classList.remove('hidden');
+}
+
+// ── Close: remove preview, close everything ──
+function closeAIGen(){
+  removeCanvasPreview();
+  hideConfirmPanel();
+  aiGenPending=null;
+  renderAll();
 }
 
 // ══════════════════════════════════════════════════
