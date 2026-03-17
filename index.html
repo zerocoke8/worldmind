@@ -1385,11 +1385,11 @@ async function doLogin(){
 function updateEditUI(){
   document.getElementById('readonly-badge').style.display=isEditMode?'none':'block';
   document.getElementById('edit-badge').style.display=isEditMode?'block':'none';
-  // toggle edit-only ctx items
   ['ctx-link-btn','ctx-sug-cur','ctx-sug-child','ctx-del-node'].forEach(id=>{
     const el=document.getElementById(id);
     if(el)el.classList.toggle('disabled',!isEditMode);
   });
+  renderAll();
 }
 
 // ══════════════════════════════════════════════════
