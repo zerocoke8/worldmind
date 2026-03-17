@@ -845,7 +845,6 @@ function confirmTabClose(){
 function duplicateTab(srcId){
   const src=tabs.find(t=>t.id===srcId);
   if(!src)return;
-  // Deep clone with new IDs
   const idMap={};
   const newTab={
     id:gid(),
@@ -865,6 +864,8 @@ function duplicateTab(srcId){
   };
   tabs.push(newTab);
   switchTab(newTab.id);
+  // Reset snapshot so saveToFirebase sees all data as new
+  fbLastSnap={nodes:{},edges:{},events:{}};
   persist();
   showToast(`"${src.title}" 탭이 복제되었습니다 ✓`);
 }
