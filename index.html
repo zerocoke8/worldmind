@@ -237,6 +237,47 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
 #fb-dot{width:7px;height:7px;border-radius:50%;background:var(--text3)}
 #fb-dot.ok{background:var(--ok)}
 #fb-dot.err{background:var(--danger)}
+
+/* ── AI GEN BUTTON ── */
+.ai-gen-btn{background:linear-gradient(135deg,rgba(124,106,247,.25),rgba(74,222,158,.18))!important;border-color:var(--accent)!important;color:var(--accent2)!important;position:relative;overflow:hidden}
+.ai-gen-btn::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(124,106,247,.15),rgba(74,222,158,.1));opacity:0;transition:opacity .2s}
+.ai-gen-btn:hover::before{opacity:1}
+.ai-gen-btn:hover{color:#fff!important;border-color:var(--accent2)!important}
+
+/* ── AI GEN MODAL ── */
+#ai-gen-modal .modal{width:540px}
+#ai-gen-prompt{width:100%;background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:14px 16px;color:var(--text);font-family:'Noto Sans KR',sans-serif;font-size:13px;outline:none;resize:vertical;min-height:100px;transition:border-color .2s;line-height:1.7}
+#ai-gen-prompt:focus{border-color:var(--accent)}
+#ai-gen-prompt::placeholder{color:var(--text3)}
+.ai-gen-hint{font-size:11px;color:var(--text3);line-height:1.6;margin:8px 0 4px;padding:10px 12px;background:var(--surface);border-radius:8px;border:1px solid var(--border)}
+.ai-gen-hint b{color:var(--accent2);font-weight:600}
+.gen-loading{display:flex;flex-direction:column;align-items:center;gap:12px;padding:30px 0}
+.gen-loading .ld span{width:8px;height:8px}
+.gen-loading-text{font-size:12px;color:var(--text3);animation:pulse-text 1.5s ease-in-out infinite}
+@keyframes pulse-text{0%,100%{opacity:.5}50%{opacity:1}}
+
+/* ── AI PREVIEW MODAL ── */
+#ai-preview-modal .modal{width:680px;max-height:85vh}
+.preview-summary{display:flex;gap:12px;margin-bottom:16px}
+.preview-stat{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;text-align:center}
+.preview-stat .ps-num{font-size:24px;font-weight:700;font-family:'Cinzel',serif}
+.preview-stat .ps-label{font-size:11px;color:var(--text3);margin-top:4px}
+.preview-nodes{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:14px;padding-right:4px}
+.pv-node{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--surface);border:1px solid var(--border);border-radius:10px;transition:border-color .15s}
+.pv-node:hover{border-color:var(--border2)}
+.pv-type-dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex-shrink:0}
+.pv-info{flex:1;min-width:0}
+.pv-name{font-size:13px;font-weight:700;color:var(--text)}
+.pv-desc{font-size:11px;color:var(--text2);margin-top:3px;line-height:1.5}
+.pv-edges{font-size:10px;color:var(--text3);margin-top:5px;display:flex;flex-wrap:wrap;gap:4px}
+.pv-edge-tag{background:rgba(124,106,247,.12);border:1px solid rgba(124,106,247,.2);border-radius:4px;padding:2px 6px;white-space:nowrap}
+.pv-section-title{font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;padding-left:2px}
+
+/* ── TAB CLOSE CONFIRM ── */
+#tab-confirm-modal .modal{width:360px;text-align:center}
+#tab-confirm-modal .modal h2{margin-bottom:14px}
+#tab-confirm-name{color:var(--accent2);font-weight:700}
+#tab-confirm-modal .modal-actions{justify-content:center}
 </style>
 </head>
 <body>
@@ -254,6 +295,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
   <input id="project-title-input" placeholder="프로젝트 이름…" value="새 세계관"/>
   <div class="tb-sep"></div>
   <button class="tb-btn" onclick="openAddPanel()">＋ 노드</button>
+  <button class="tb-btn ai-gen-btn" onclick="openAIGenModal()">✨ AI 노드</button>
   <div id="fb-status"><div id="fb-dot"></div><span id="fb-txt">오프라인</span></div>
   <div id="tb-spacer"></div>
   <div id="readonly-badge" onclick="openLoginModal()" title="클릭하여 편집 모드 전환">🔒 보기 전용</div>
@@ -448,6 +490,57 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
   </div>
 </div>
 
+<!-- TAB CLOSE CONFIRM -->
+<div id="tab-confirm-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>🗑 탭 삭제</h2>
+    <p><span id="tab-confirm-name"></span> 탭을 삭제하시겠습니까?<br><span style="font-size:11px;color:var(--text3)">삭제된 탭의 노드와 관계는 복구할 수 없습니다.</span></p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="cancelTabClose()">취소</button>
+      <button class="btn btn-danger" onclick="confirmTabClose()">삭제</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI GEN MODAL -->
+<div id="ai-gen-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>✨ AI 세계관 생성</h2>
+    <p>프롬프트를 입력하면 AI가 노드와 관계를 한번에 생성합니다.<br>프롬프트에 포함된 주요 명사들이 노드로 추가됩니다.</p>
+    <label>생성 프롬프트</label>
+    <textarea id="ai-gen-prompt" placeholder="예: 마왕 카이론이 지배하는 암흑대륙에 용사 아린과 마법사 에스텔이 저항군을 이끌고 있다. 고대 유적 실피아에서 봉인된 성검 엘드라를 찾아야 한다."></textarea>
+    <div class="ai-gen-hint">
+      💡 <b>팁:</b> 인물, 장소, 사물, 집단 이름을 구체적으로 넣을수록 풍부한 세계관이 생성됩니다. 기존 노드가 있다면 자동으로 연결됩니다.
+    </div>
+    <div id="ai-gen-loading" style="display:none">
+      <div class="gen-loading">
+        <div class="ld"><span></span><span></span><span></span></div>
+        <div class="gen-loading-text">세계관을 구축하고 있습니다…</div>
+      </div>
+    </div>
+    <div class="modal-actions" id="ai-gen-actions">
+      <button class="btn btn-ghost" onclick="closeAIGenModal()">취소</button>
+      <button class="btn btn-primary" id="ai-gen-submit" onclick="submitAIGen()">🚀 생성하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- AI PREVIEW MODAL -->
+<div id="ai-preview-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <h2>🔍 생성 결과 미리보기</h2>
+    <div class="preview-summary" id="preview-summary"></div>
+    <div class="pv-section-title">생성될 노드 및 관계</div>
+    <div class="preview-nodes" id="preview-nodes"></div>
+    <p style="font-size:13px;color:var(--text2);text-align:center;margin-bottom:4px">이대로 생성하시겠습니까?</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeAIPreview()">취소</button>
+      <button class="btn btn-ghost" onclick="retryAIGen()" style="border-color:var(--accent);color:var(--accent2)">↻ 다시 생성</button>
+      <button class="btn btn-primary" onclick="confirmAIGen()">✓ 생성 확정</button>
+    </div>
+  </div>
+</div>
+
 <!-- ZOOM -->
 <div id="zoom-ctrl">
   <button class="zoom-btn" onclick="zoomIn()">＋</button>
@@ -594,9 +687,24 @@ function switchTab(id){
   setTimeout(zoomFit,80);
 }
 
+let pendingCloseTabId=null;
 function closeTab(id,ev){
   if(ev)ev.stopPropagation();
   if(tabs.length<=1){showToast('마지막 탭은 삭제할 수 없습니다');return;}
+  const t=tabs.find(tb=>tb.id===id);
+  pendingCloseTabId=id;
+  document.getElementById('tab-confirm-name').textContent=t?t.title:'';
+  document.getElementById('tab-confirm-modal').classList.remove('hidden');
+}
+function cancelTabClose(){
+  pendingCloseTabId=null;
+  document.getElementById('tab-confirm-modal').classList.add('hidden');
+}
+function confirmTabClose(){
+  if(!pendingCloseTabId)return;
+  const id=pendingCloseTabId;
+  pendingCloseTabId=null;
+  document.getElementById('tab-confirm-modal').classList.add('hidden');
   tabs=tabs.filter(t=>t.id!==id);
   if(activeTabId===id)switchTab(tabs[0].id);
   else{renderTabBar();renderAll();}
@@ -914,6 +1022,7 @@ function renderEdges(){
     [hit,path].forEach(el=>{
       el.addEventListener('click',ev=>{ev.stopPropagation();selEdgeId=(selEdgeId===edge.id)?null:edge.id;selNodeId=null;document.querySelectorAll('.node.selected').forEach(n=>n.classList.remove('selected'));hideCtx();renderEdges();});
       el.addEventListener('contextmenu',ev=>{ev.preventDefault();ev.stopPropagation();ctxEdgeId=edge.id;selEdgeId=edge.id;renderEdges();showCtx('edge-ctx',ev.clientX,ev.clientY);});
+      addLongPress(el,(x,y)=>{ctxEdgeId=edge.id;selEdgeId=edge.id;renderEdges();showCtx('edge-ctx',x,y);});
     });
   });
 }
@@ -941,6 +1050,7 @@ function renderNodes(){
       document.querySelectorAll('.node.selected').forEach(n=>n.classList.remove('selected'));el.classList.add('selected');
     });
     el.addEventListener('contextmenu',ev=>{ev.preventDefault();ev.stopPropagation();if(linkMode){cancelLink();return;}ctxNodeId=node.id;showCtx('node-ctx',ev.clientX,ev.clientY);});
+    addLongPress(el,(x,y)=>{if(linkMode){cancelLink();return;}ctxNodeId=node.id;showCtx('node-ctx',x,y);});
     el.addEventListener('mouseenter',()=>{if(linkMode&&node.id!==linkSrcId)el.classList.add('link-target-hover');});
     el.addEventListener('mouseleave',()=>el.classList.remove('link-target-hover'));
     if(isEditMode)makeDrag(el,node);
@@ -959,6 +1069,41 @@ function makeDrag(el,node){
   });
 }
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ══════════════════════════════════════════════════
+// LONG-PRESS → CONTEXT MENU (tablet support)
+// ══════════════════════════════════════════════════
+const LP_DELAY=500,LP_MOVE_THRESH=10;
+function addLongPress(el,callback){
+  let timer=null,startX=0,startY=0,fired=false;
+  function getXY(ev){
+    if(ev.touches&&ev.touches.length)return{x:ev.touches[0].clientX,y:ev.touches[0].clientY};
+    return{x:ev.clientX,y:ev.clientY};
+  }
+  function start(ev){
+    fired=false;const p=getXY(ev);startX=p.x;startY=p.y;
+    timer=setTimeout(()=>{fired=true;callback(startX,startY,ev);},LP_DELAY);
+  }
+  function move(ev){
+    if(!timer)return;const p=getXY(ev);
+    if(Math.abs(p.x-startX)>LP_MOVE_THRESH||Math.abs(p.y-startY)>LP_MOVE_THRESH){clearTimeout(timer);timer=null;}
+  }
+  function end(ev){
+    if(timer){clearTimeout(timer);timer=null;}
+    if(fired){ev.preventDefault();ev.stopPropagation();fired=false;}
+  }
+  // mouse
+  el.addEventListener('mousedown',start);
+  document.addEventListener('mousemove',move);
+  el.addEventListener('mouseup',end);
+  // touch
+  el.addEventListener('touchstart',start,{passive:true});
+  el.addEventListener('touchmove',move,{passive:true});
+  el.addEventListener('touchend',end);
+  el.addEventListener('touchcancel',()=>{if(timer){clearTimeout(timer);timer=null;}fired=false;});
+  // suppress click after long-press
+  el.addEventListener('click',ev=>{if(fired){ev.preventDefault();ev.stopPropagation();fired=false;}},true);
+}
 
 // ══════════════════════════════════════════════════
 // PAN & ZOOM
@@ -1509,6 +1654,215 @@ function protagonistSaveEvent(){
   addEventFromStory(protagonistStory,`${n?n.name:''} 방문`);
   closeProtagonist();
   if(activePanel!=='events')togglePanel('events');
+}
+
+// ══════════════════════════════════════════════════
+// AI WORLD GENERATION
+// ══════════════════════════════════════════════════
+let aiGenPending=null; // stores generated data before confirm
+let aiGenPromptText=''; // stores the prompt for retry
+
+function openAIGenModal(){
+  if(!isEditMode){showToast('편집 모드에서만 가능합니다');return;}
+  document.getElementById('ai-gen-prompt').value='';
+  document.getElementById('ai-gen-loading').style.display='none';
+  document.getElementById('ai-gen-actions').style.display='flex';
+  document.getElementById('ai-gen-submit').disabled=false;
+  document.getElementById('ai-gen-submit').textContent='🚀 생성하기';
+  document.getElementById('ai-gen-modal').classList.remove('hidden');
+  setTimeout(()=>document.getElementById('ai-gen-prompt').focus(),50);
+}
+function closeAIGenModal(){document.getElementById('ai-gen-modal').classList.add('hidden');}
+
+async function submitAIGen(){
+  const prompt=document.getElementById('ai-gen-prompt').value.trim();
+  if(!prompt){showToast('프롬프트를 입력하세요');return;}
+  aiGenPromptText=prompt;
+
+  // show loading
+  document.getElementById('ai-gen-loading').style.display='block';
+  document.getElementById('ai-gen-submit').disabled=true;
+  document.getElementById('ai-gen-submit').textContent='생성 중…';
+
+  const t=tab();
+  const existingNodes=nodes().map(n=>`[${TL[n.type]}]${n.name}`).join(', ');
+  const existingEdges=edgeCtx().slice(0,400);
+
+  const sys=`당신은 창작 세계관 빌더입니다. 사용자의 프롬프트를 분석하여 세계관 노드와 관계를 JSON으로 생성합니다.
+
+규칙:
+1. 프롬프트에 등장하는 모든 주요 명사(인물명, 장소명, 사물명, 집단명, 개념 등)를 반드시 노드로 만드세요.
+2. 기존 노드가 있으면 새 노드와 자연스럽게 관계를 연결하세요.
+3. 각 노드에 적절한 type을 부여하세요: world(세계/배경), group(집단/조직), space(장소/공간), char(인물), item(사물/아이템), trait(성격/특성), custom(기타)
+4. 관계에는 짧은 label(2-4자)과 desc(상세설명)를 넣으세요.
+5. 노드의 desc는 세계관에 맞는 풍부한 설명을 2-3문장으로 작성하세요.
+
+반드시 아래 JSON 형식으로만 응답하세요:
+{"nodes":[{"tempId":"t1","type":"char","name":"이름","desc":"설명"}],"edges":[{"from":"t1","to":"t2","label":"관계명","desc":"상세설명"}],"existingLinks":[{"fromExisting":"기존노드이름","toNew":"t1","label":"관계명","desc":"상세설명"}]}
+
+- tempId는 t1, t2, t3… 형식
+- existingLinks의 fromExisting은 기존 노드의 정확한 이름, toNew는 새 노드의 tempId
+- 기존 노드끼리의 새 관계도 가능: existingToExisting 배열에 {"from":"기존이름A","to":"기존이름B","label":"","desc":""} 추가`;
+
+  const usr=`세계관 프롬프트: ${(t.worldPrompt||'없음').slice(0,200)}
+기존 노드: ${existingNodes||'없음'}
+기존 관계: ${existingEdges||'없음'}
+
+사용자 입력:
+${prompt}
+
+위 내용을 분석하여 노드와 관계를 생성하세요. 프롬프트의 모든 주요 명사를 노드로 만드세요.`;
+
+  try{
+    const text=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}],maxTokens:2000});
+    // extract JSON
+    let jsonStr=text;
+    const jsonMatch=text.match(/\{[\s\S]*\}/);
+    if(jsonMatch)jsonStr=jsonMatch[0];
+    const result=JSON.parse(repairJSON(jsonStr));
+
+    if(!result.nodes||!result.nodes.length){
+      showToast('노드를 생성하지 못했습니다. 다시 시도해주세요.');
+      resetAIGenUI();return;
+    }
+
+    aiGenPending=result;
+    closeAIGenModal();
+    showAIPreview(result);
+  }catch(e){
+    console.error('AI Gen error:',e);
+    showToast('생성 오류: '+e.message);
+    resetAIGenUI();
+  }
+}
+
+function resetAIGenUI(){
+  document.getElementById('ai-gen-loading').style.display='none';
+  document.getElementById('ai-gen-submit').disabled=false;
+  document.getElementById('ai-gen-submit').textContent='🚀 생성하기';
+}
+
+function showAIPreview(result){
+  const nodeCount=result.nodes.length;
+  const edgeCount=(result.edges?.length||0)+(result.existingLinks?.length||0)+(result.existingToExisting?.length||0);
+
+  // summary stats
+  const summaryEl=document.getElementById('preview-summary');
+  const typeCounts={};
+  result.nodes.forEach(n=>{typeCounts[n.type]=(typeCounts[n.type]||0)+1;});
+  summaryEl.innerHTML=`
+    <div class="preview-stat"><div class="ps-num" style="color:var(--accent2)">${nodeCount}</div><div class="ps-label">새 노드</div></div>
+    <div class="preview-stat"><div class="ps-num" style="color:var(--ok)">${edgeCount}</div><div class="ps-label">새 관계</div></div>
+    <div class="preview-stat"><div class="ps-num" style="color:var(--gold2)">${Object.keys(typeCounts).length}</div><div class="ps-label">노드 유형</div></div>
+  `;
+
+  // node list with edges
+  const nodesEl=document.getElementById('preview-nodes');
+  nodesEl.innerHTML='';
+  result.nodes.forEach(n=>{
+    // find edges for this node
+    const relatedEdges=[];
+    (result.edges||[]).forEach(e=>{
+      if(e.from===n.tempId){const target=result.nodes.find(nd=>nd.tempId===e.to);if(target)relatedEdges.push(`→ ${target.name} (${e.label||'관계'})`);}
+      if(e.to===n.tempId){const source=result.nodes.find(nd=>nd.tempId===e.from);if(source)relatedEdges.push(`← ${source.name} (${e.label||'관계'})`);}
+    });
+    (result.existingLinks||[]).forEach(e=>{
+      if(e.toNew===n.tempId)relatedEdges.push(`← ${e.fromExisting} (${e.label||'관계'})`);
+    });
+
+    const col=TC[n.type]||'#5a6090';
+    const card=document.createElement('div');card.className='pv-node';
+    card.innerHTML=`
+      <div class="pv-type-dot" style="background:${col}"></div>
+      <div class="pv-info">
+        <div class="pv-name">${TI[n.type]||'📌'} ${esc(n.name)} <span style="font-size:10px;color:var(--text3);font-weight:400">${TL[n.type]||n.type}</span></div>
+        <div class="pv-desc">${esc(n.desc||'')}</div>
+        ${relatedEdges.length?`<div class="pv-edges">${relatedEdges.map(r=>`<span class="pv-edge-tag">${esc(r)}</span>`).join('')}</div>`:''}
+      </div>`;
+    nodesEl.appendChild(card);
+  });
+
+  document.getElementById('ai-preview-modal').classList.remove('hidden');
+}
+
+function closeAIPreview(){
+  document.getElementById('ai-preview-modal').classList.add('hidden');
+  aiGenPending=null;
+}
+
+function retryAIGen(){
+  closeAIPreview();
+  document.getElementById('ai-gen-prompt').value=aiGenPromptText;
+  document.getElementById('ai-gen-modal').classList.remove('hidden');
+  document.getElementById('ai-gen-loading').style.display='none';
+  document.getElementById('ai-gen-submit').disabled=false;
+  document.getElementById('ai-gen-submit').textContent='🚀 생성하기';
+}
+
+function confirmAIGen(){
+  if(!aiGenPending)return;
+  const result=aiGenPending;
+  const t=tab();if(!t)return;
+
+  // calculate layout: place new nodes in a radial/grid pattern
+  const existing=nodes();
+  let cx=2000,cy=2000;
+  if(existing.length){
+    cx=existing.reduce((s,n)=>s+n.x,0)/existing.length;
+    cy=existing.reduce((s,n)=>s+n.y,0)/existing.length;
+  }
+
+  // create a tempId→realId map
+  const idMap={};
+  const count=result.nodes.length;
+  const cols=Math.ceil(Math.sqrt(count));
+
+  result.nodes.forEach((n,i)=>{
+    const row=Math.floor(i/cols);
+    const col=i%cols;
+    const spacing=260;
+    // offset from center, with some jitter
+    const baseX=cx+(col-(cols-1)/2)*spacing+(Math.random()*30-15);
+    const baseY=cy+(row-(Math.ceil(count/cols)-1)/2)*spacing+200+(Math.random()*30-15);
+
+    const realId=gid();
+    idMap[n.tempId]=realId;
+    t.nodes.push({id:realId,type:n.type||'custom',name:n.name,desc:n.desc||'',x:baseX,y:baseY});
+  });
+
+  // add edges between new nodes
+  (result.edges||[]).forEach(e=>{
+    const fromId=idMap[e.from],toId=idMap[e.to];
+    if(fromId&&toId){
+      t.edges.push({id:gid(),from:fromId,to:toId,label:e.label||'',desc:e.desc||'',isParent:false});
+    }
+  });
+
+  // add edges from existing nodes to new nodes
+  (result.existingLinks||[]).forEach(e=>{
+    const existNode=existing.find(n=>n.name===e.fromExisting);
+    const newId=idMap[e.toNew];
+    if(existNode&&newId){
+      t.edges.push({id:gid(),from:existNode.id,to:newId,label:e.label||'',desc:e.desc||'',isParent:false});
+    }
+  });
+
+  // add edges between existing nodes
+  (result.existingToExisting||[]).forEach(e=>{
+    const a=existing.find(n=>n.name===e.from);
+    const b=existing.find(n=>n.name===e.to);
+    if(a&&b){
+      // check duplicate
+      if(!t.edges.find(ex=>(ex.from===a.id&&ex.to===b.id)||(ex.from===b.id&&ex.to===a.id))){
+        t.edges.push({id:gid(),from:a.id,to:b.id,label:e.label||'',desc:e.desc||'',isParent:false});
+      }
+    }
+  });
+
+  renderAll();persist();
+  closeAIPreview();
+  showToast(`${count}개 노드가 생성되었습니다 ✓`);
+  setTimeout(zoomFit,150);
 }
 
 // ══════════════════════════════════════════════════
