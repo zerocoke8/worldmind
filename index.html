@@ -1494,6 +1494,7 @@ function renderNodes(){
 
     el.addEventListener('click',ev=>{
       ev.stopPropagation();
+      if(_justDragged){_justDragged=false;return;}
       if(linkMode){if(node.id===linkSrcId){cancelLink();return;}addEdge(linkSrcId,node.id);cancelLink();return;}
       node._exp=!node._exp;el.querySelector('.node-desc').classList.toggle('visible',node._exp);
       selNodeId=node.id;selEdgeId=null;renderEdges();
@@ -1507,13 +1508,14 @@ function renderNodes(){
     canvas.appendChild(el);
   });
 }
+let _justDragged=false;
 function makeDrag(el,node){
   let dx,dy,sx,sy,dragging=false;
   el.addEventListener('mousedown',ev=>{
     if(ev.button!==0||linkMode)return;ev.stopPropagation();
     dragging=false;dx=ev.clientX;dy=ev.clientY;sx=node.x;sy=node.y;
     const mv=e=>{const ddx=(e.clientX-dx)/scale,ddy=(e.clientY-dy)/scale;if(Math.abs(ddx)>3||Math.abs(ddy)>3)dragging=true;if(!dragging)return;node.x=sx+ddx;node.y=sy+ddy;el.style.left=node.x+'px';el.style.top=node.y+'px';renderEdges();};
-    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);if(dragging)persist();};
+    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);if(dragging){_justDragged=true;persist();}};
     document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
   });
 }
