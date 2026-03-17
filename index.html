@@ -39,8 +39,10 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
 .tab-item:hover{background:var(--surface);color:var(--text2)}
 .tab-item.active{background:var(--bg3);color:var(--text);border-color:var(--border2);border-bottom:1px solid var(--bg3);margin-bottom:-1px;z-index:2}
 .tab-close{opacity:0;font-size:12px;line-height:1;padding:1px 3px;border-radius:3px;transition:opacity .15s,background .15s}
-.tab-item:hover .tab-close,.tab-item.active .tab-close{opacity:.5}
+.tab-clone{opacity:0;font-size:11px;line-height:1;padding:1px 3px;border-radius:3px;transition:opacity .15s,background .15s;cursor:pointer}
+.tab-item:hover .tab-close,.tab-item.active .tab-close,.tab-item:hover .tab-clone,.tab-item.active .tab-clone{opacity:.5}
 .tab-close:hover{opacity:1!important;background:rgba(224,92,122,.25);color:var(--danger)}
+.tab-clone:hover{opacity:1!important;background:rgba(74,222,158,.2);color:var(--ok)}
 #tab-add{width:28px;height:28px;border-radius:6px;background:transparent;border:1px solid var(--border);color:var(--text3);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-bottom:2px;transition:all .15s;flex-shrink:0}
 #tab-add:hover{background:var(--surface);color:var(--text);border-color:var(--border2)}
 
@@ -514,6 +516,18 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
   </div>
 </div>
 
+<!-- LAYOUT CONFIRM -->
+<div id="layout-confirm-modal" class="modal-overlay hidden">
+  <div class="modal" style="width:360px;text-align:center">
+    <h2>🔀 노드 정렬</h2>
+    <p>모든 노드의 위치가 자동으로 재배치됩니다.<br><span style="font-size:11px;color:var(--text3)">부모-자식 관계를 기준으로 방사형 배치가 적용됩니다.</span></p>
+    <div class="modal-actions" style="justify-content:center">
+      <button class="btn btn-ghost" onclick="cancelAutoLayout()">취소</button>
+      <button class="btn btn-primary" onclick="confirmAutoLayout()">정렬하기</button>
+    </div>
+  </div>
+</div>
+
 <!-- AI GEN MODAL -->
 <div id="ai-gen-modal" class="modal-overlay hidden">
   <div class="modal">
@@ -572,7 +586,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
 const TL={world:'세계',group:'집단',space:'공간',char:'인물',item:'사물',trait:'성격',custom:'기타'};
 const TI={world:'🌍',group:'👥',space:'🗺',char:'👤',item:'⚔️',trait:'💎',custom:'📌'};
 const TC={world:'#9b59d6',group:'#4a9edd',space:'#3ecfb8',char:'#6bbd4a',item:'#e8b84b',trait:'#d4914a',custom:'#5a6090'};
-const AI_MODEL='claude-sonnet-4-20250514';
+const AI_MODEL='claude-opus-4-6';
 const API_URL='https://api.anthropic.com/v1/messages';
 const API_VERSION='2023-06-01';
 
@@ -783,11 +797,11 @@ function createTab(title){
 }
 
 function addTab(){
+  if(!isEditMode){showToast('편집 모드에서만 가능합니다');return;}
   const t=createTab('새 세계관 '+(tabs.length+1));
   switchTab(t.id);
   fbSaveTabList();
   fbSaveTabMeta();
-  // save initial world node
   if(t.nodes.length)fbSaveNode(t.nodes[0]);
 }
 
@@ -805,6 +819,7 @@ function switchTab(id){
 let pendingCloseTabId=null;
 function closeTab(id,ev){
   if(ev)ev.stopPropagation();
+  if(!isEditMode){showToast('편집 모드에서만 가능합니다');return;}
   if(tabs.length<=1){showToast('마지막 탭은 삭제할 수 없습니다');return;}
   const t=tabs.find(tb=>tb.id===id);
   pendingCloseTabId=id;
@@ -821,11 +836,37 @@ function confirmTabClose(){
   pendingCloseTabId=null;
   document.getElementById('tab-confirm-modal').classList.add('hidden');
   tabs=tabs.filter(t=>t.id!==id);
-  // Remove from Firebase
   fbRemoveTab(id);
   fbSaveTabList();
   if(activeTabId===id)switchTab(tabs[0].id);
   else{renderTabBar();renderAll();}
+}
+
+function duplicateTab(srcId){
+  const src=tabs.find(t=>t.id===srcId);
+  if(!src)return;
+  // Deep clone with new IDs
+  const idMap={};
+  const newTab={
+    id:gid(),
+    title:'복사_'+src.title,
+    worldPrompt:src.worldPrompt||'',
+    refImages:src.refImages?[...src.refImages]:[],
+    nodes:src.nodes.map(n=>{
+      const nid=gid();idMap[n.id]=nid;
+      return{id:nid,type:n.type,name:n.name,desc:n.desc||'',x:n.x,y:n.y};
+    }),
+    edges:src.edges.map(e=>{
+      return{id:gid(),from:idMap[e.from]||e.from,to:idMap[e.to]||e.to,label:e.label||'',desc:e.desc||'',isParent:!!e.isParent};
+    }),
+    events:src.events.map(ev=>{
+      return{id:gid(),time:ev.time||'',body:ev.body||'',order:ev.order||0};
+    })
+  };
+  tabs.push(newTab);
+  switchTab(newTab.id);
+  persist();
+  showToast(`"${src.title}" 탭이 복제되었습니다 ✓`);
 }
 
 function renderTabBar(){
@@ -837,11 +878,17 @@ function renderTabBar(){
     const titleSpan=document.createElement('span');
     titleSpan.style.cssText='overflow:hidden;text-overflow:ellipsis;flex:1';
     titleSpan.textContent=t.title;
+    const cloneSpan=document.createElement('span');
+    cloneSpan.className='tab-clone';
+    cloneSpan.textContent='⧉';
+    cloneSpan.title='탭 복제';
+    cloneSpan.addEventListener('click',ev=>{ev.stopPropagation();duplicateTab(t.id);});
     const closeSpan=document.createElement('span');
     closeSpan.className='tab-close';
     closeSpan.textContent='✕';
     closeSpan.addEventListener('click',ev=>closeTab(t.id,ev));
     el.appendChild(titleSpan);
+    el.appendChild(cloneSpan);
     el.appendChild(closeSpan);
     el.onclick=()=>switchTab(t.id);
     c.appendChild(el);
@@ -1022,7 +1069,7 @@ function fbAttachTab(tabId){
     const had=t.nodes.find(n=>n.id===snap.key);
     t.nodes=t.nodes.filter(n=>n.id!==snap.key);
     t.edges=t.edges.filter(e=>e.from!==snap.key&&e.to!==snap.key);
-    if(had&&tabId===activeTabId)renderAll();
+    if(had&&tabId===activeTabId)renderAllDebounced();
     fbApplyingRemote=false;
     fbTakeSnap();
   });
@@ -1035,7 +1082,7 @@ function fbAttachTab(tabId){
     const t=tabs.find(tb=>tb.id===tabId);if(!t)return;
     fbApplyingRemote=true;
     t.edges=t.edges.filter(e=>e.id!==snap.key);
-    if(tabId===activeTabId)renderAll();
+    if(tabId===activeTabId)renderAllDebounced();
     fbApplyingRemote=false;
     fbTakeSnap();
   });
@@ -1066,7 +1113,7 @@ function fbApplyNode(tabId,snap){
   }else{
     t.nodes.push({id:snap.key,type:d.type||'custom',name:d.name||'',desc:d.desc||'',x:d.x||2000,y:d.y||2000});
   }
-  if(tabId===activeTabId)renderAll();
+  if(tabId===activeTabId)renderAllDebounced();
   fbApplyingRemote=false;
   fbTakeSnap();
 }
@@ -1084,7 +1131,7 @@ function fbApplyEdge(tabId,snap){
   }else{
     t.edges.push({id:snap.key,from:d.from,to:d.to,label:d.label||'',desc:d.desc||'',isParent:!!d.isParent});
   }
-  if(tabId===activeTabId)renderAll();
+  if(tabId===activeTabId)renderAllDebounced();
   fbApplyingRemote=false;
   fbTakeSnap();
 }
@@ -1262,7 +1309,7 @@ async function fbLoadSingleTab(tabId){
     t.nodes=Object.entries(nodesObj).map(([id,n])=>({id,type:n.type||'custom',name:n.name||'',desc:n.desc||'',x:n.x||2000,y:n.y||2000}));
     t.edges=Object.entries(edgesObj).map(([id,e])=>({id,from:e.from,to:e.to,label:e.label||'',desc:e.desc||'',isParent:!!e.isParent}));
     t.events=Object.entries(eventsObj).map(([id,ev])=>({id,time:ev.time||'',body:ev.body||'',order:ev.order||0}));
-    renderTabBar();if(tabId===activeTabId)renderAll();
+    renderTabBar();if(tabId===activeTabId)renderAllDebounced();
   }catch(e){console.error('Load tab error:',e);}
 }
 
@@ -1392,7 +1439,10 @@ function center(node){
 // ══════════════════════════════════════════════════
 // RENDER ALL
 // ══════════════════════════════════════════════════
-function renderAll(){renderEdges();renderNodes();}
+let _renderTimer=null;
+function renderAll(){cleanupLongPress();renderNodes();renderEdges();}
+// Debounced version for Firebase remote updates
+function renderAllDebounced(){if(_renderTimer)return;_renderTimer=setTimeout(()=>{_renderTimer=null;renderAll();},50);}
 
 // ══════════════════════════════════════════════════
 // RENDER EDGES
@@ -1454,10 +1504,8 @@ function renderNodes(){
     el.addEventListener('mouseenter',()=>{if(linkMode&&node.id!==linkSrcId)el.classList.add('link-target-hover');});
     el.addEventListener('mouseleave',()=>el.classList.remove('link-target-hover'));
     if(isEditMode)makeDrag(el,node);
-    else makeDragViewOnly(el,node);
     canvas.appendChild(el);
   });
-  setTimeout(renderEdges,0);
 }
 function makeDrag(el,node){
   let dx,dy,sx,sy,dragging=false;
@@ -1469,22 +1517,19 @@ function makeDrag(el,node){
     document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
   });
 }
-function makeDragViewOnly(el,node){
-  let dx,dy,sx,sy,dragging=false;
-  el.addEventListener('mousedown',ev=>{
-    if(ev.button!==0||linkMode)return;ev.stopPropagation();
-    dragging=false;dx=ev.clientX;dy=ev.clientY;sx=node.x;sy=node.y;
-    const mv=e=>{const ddx=(e.clientX-dx)/scale,ddy=(e.clientY-dy)/scale;if(Math.abs(ddx)>3||Math.abs(ddy)>3)dragging=true;if(!dragging)return;node.x=sx+ddx;node.y=sy+ddy;el.style.left=node.x+'px';el.style.top=node.y+'px';renderEdges();};
-    const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);if(dragging)saveLocal();};
-    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
-  });
-}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ══════════════════════════════════════════════════
 // LONG-PRESS → CONTEXT MENU (tablet support)
 // ══════════════════════════════════════════════════
 const LP_DELAY=500,LP_MOVE_THRESH=10;
+let _lpCleanups=[]; // track document-level listeners for cleanup
+
+function cleanupLongPress(){
+  _lpCleanups.forEach(fn=>fn());
+  _lpCleanups=[];
+}
+
 function addLongPress(el,callback){
   let timer=null,startX=0,startY=0,fired=false;
   function getXY(ev){
@@ -1493,7 +1538,11 @@ function addLongPress(el,callback){
   }
   function start(ev){
     fired=false;const p=getXY(ev);startX=p.x;startY=p.y;
-    timer=setTimeout(()=>{fired=true;callback(startX,startY,ev);},LP_DELAY);
+    timer=setTimeout(()=>{
+      fired=true;
+      document.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
+      callback(startX,startY,ev);
+    },LP_DELAY);
   }
   function move(ev){
     if(!timer)return;const p=getXY(ev);
@@ -1503,17 +1552,16 @@ function addLongPress(el,callback){
     if(timer){clearTimeout(timer);timer=null;}
     if(fired){ev.preventDefault();ev.stopPropagation();fired=false;}
   }
-  // mouse
   el.addEventListener('mousedown',start);
   document.addEventListener('mousemove',move);
   el.addEventListener('mouseup',end);
-  // touch
   el.addEventListener('touchstart',start,{passive:true});
   el.addEventListener('touchmove',move,{passive:true});
   el.addEventListener('touchend',end);
   el.addEventListener('touchcancel',()=>{if(timer){clearTimeout(timer);timer=null;}fired=false;});
-  // suppress click after long-press
   el.addEventListener('click',ev=>{if(fired){ev.preventDefault();ev.stopPropagation();fired=false;}},true);
+  // Track document-level listener for cleanup
+  _lpCleanups.push(()=>document.removeEventListener('mousemove',move));
 }
 
 // ══════════════════════════════════════════════════
@@ -1798,8 +1846,9 @@ function refreshEventsList(){
 async function generateEvent(){
   const genBtn=document.getElementById('events-gen-btn');genBtn.textContent='생성 중…';genBtn.disabled=true;
   const t=tab();
-  const sys=`당신은 창작 세계관의 스토리텔러입니다. 반드시 JSON으로만 응답하세요. 가능한 짧게 작성하세요.\n형식: {"time":"시간 표현(예: 1년 전, 사건 초반)","body":"사건 내용(3문장 이내)","order":정수(낮을수록 과거)}`;
-  const usr=`세계관: ${t.worldPrompt||'없음'}\n노드:\n${nodeCtx()}\n관계:\n${edgeCtx()}\n기존사건:\n${eventCtx()}\n\n위 정보를 바탕으로 일어날만한 새로운 사건 1개를 생성하고, 기존 사건들 사이의 시간 순서에서 어디에 위치하는지 order로 표현하세요.`;
+  const allNodeNames=nodes().map(n=>`${n.name}`).join(', ');
+  const sys=`당신은 창작 세계관의 스토리텔러입니다. 반드시 JSON으로만 응답하세요. 가능한 짧게 작성하세요.\n형식: {"time":"시간 표현(예: 1년 전, 사건 초반)","body":"사건 내용(3문장 이내)","order":정수(낮을수록 과거)}\n\n[중요 규칙] 아래 목록에 있는 이름만 사용하세요. 목록에 없는 새로운 인물, 장소, 사물, 집단을 만들어내지 마세요.\n사용 가능한 이름: ${allNodeNames}`;
+  const usr=`세계관: ${t.worldPrompt||'없음'}\n노드:\n${nodeCtx()}\n관계:\n${edgeCtx()}\n기존사건:\n${eventCtx()}\n\n위 정보를 바탕으로, 기존 노드에 있는 이름만 사용하여 일어날만한 새로운 사건 1개를 생성하고, 기존 사건들 사이의 시간 순서에서 어디에 위치하는지 order로 표현하세요.`;
   try{
     const text=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}],maxTokens:800});
     const clean=text.replace(/```json|```/g,'').trim();
@@ -2024,14 +2073,18 @@ async function fetchProtagonistStory(nodeId){
   const hero=nodes().find(nd=>/주인공/i.test(nd.name));
   const connectedIds=edges().filter(e=>e.from===nodeId||e.to===nodeId).map(e=>e.from===nodeId?e.to:e.from);
   const connected=connectedIds.map(id=>byId(id)).filter(Boolean);
-  const sys='창작 세계관의 스토리텔러. 주인공의 상호작용 장면을 생생하게 2-3문단으로 묘사하세요. 장소면 방문, 인물이면 대화, 사물이면 획득/관찰, 사건이면 체험. 연결된 인물이 있으면 함께 등장시키세요. 반드시 완결된 장면으로 끝내세요.';
+  const allNodeNames=nodes().map(nd=>`${nd.name}`).join(', ');
+  const sys=`창작 세계관의 스토리텔러. 주인공의 상호작용 장면을 생생하게 2-3문단으로 묘사하세요. 장소면 방문, 인물이면 대화, 사물이면 획득/관찰, 사건이면 체험. 연결된 인물이 있으면 함께 등장시키세요. 반드시 완결된 장면으로 끝내세요.
+
+[중요 규칙] 아래 목록에 있는 이름만 사용하세요. 목록에 없는 새로운 인물, 장소, 사물, 집단을 만들어내지 마세요.
+사용 가능한 이름: ${allNodeNames}`;
   const usr=`세계관: ${(t.worldPrompt||'없음').slice(0,150)}
 주인공: ${hero?hero.name+' - '+(hero.desc||'').slice(0,80):'(주인공 노드 없음)'}
 대상: [${TL[n.type]}] ${n.name} - ${(n.desc||'').slice(0,100)}
 연결 노드: ${connected.map(nd=>`[${TL[nd.type]}]${nd.name}`).join(', ')||'없음'}
 관계: ${edgeCtx().slice(0,300)}
 
-주인공 상호작용 장면을 묘사하세요.`;
+위 목록에 있는 이름만 사용하여 주인공 상호작용 장면을 묘사하세요.`;
   try{
     protagonistStory=await callAnthropicAPI({system:sys,messages:[{role:'user',content:usr}],maxTokens:1200});
     storyEl.textContent=protagonistStory;
@@ -2312,8 +2365,21 @@ function closeAIGen(){
 // AUTO LAYOUT — Radial Tree (parent-child only)
 // ══════════════════════════════════════════════════
 function autoLayout(){
-  const ns=nodes();const es=edges();
+  if(!isEditMode){showToast('편집 모드에서만 가능합니다');return;}
+  const ns=nodes();
   if(!ns.length){showToast('정렬할 노드가 없습니다');return;}
+  document.getElementById('layout-confirm-modal').classList.remove('hidden');
+}
+function confirmAutoLayout(){
+  document.getElementById('layout-confirm-modal').classList.add('hidden');
+  executeAutoLayout();
+}
+function cancelAutoLayout(){
+  document.getElementById('layout-confirm-modal').classList.add('hidden');
+}
+function executeAutoLayout(){
+  const ns=nodes();const es=edges();
+  if(!ns.length)return;
 
   // ── 1. Build parent tree (only isParent edges matter) ──
   const parentOf={};
